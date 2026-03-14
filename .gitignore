@@ -1,0 +1,4 @@
+zig-out/
+lib/
+.zig-cache/
+sample/
