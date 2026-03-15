@@ -1,0 +1,7 @@
+CompileFlags:
+  Add: 
+    - "-Isrc/ui/"       # Nếu INC_R8 nằm trong src/
+    - "-Isrc/ui/"   # Nếu INC_R8 nằm trong include/
+    - "-I."         # Tìm ngay tại thư mục gốc
+  # Nếu bạn dùng các macro đặc biệt từ Zig, đôi khi cần thêm:
+  # - "-DDEBUG"

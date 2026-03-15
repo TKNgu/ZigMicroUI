@@ -13,6 +13,14 @@ pub fn build(b: *std.Build) void {
         }),
     });
 
+    exe.addCSourceFile(.{
+        .file = b.path("src/ui/microui.c"),
+        .flags = &[_][]const u8{
+            "-fno-sanitize=alignment",
+        },
+    });
+    exe.addIncludePath(b.path("src/ui/"));
+
     exe.root_module.addIncludePath(.{
         .cwd_relative = "lib/install/include",
     });
