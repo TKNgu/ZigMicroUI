@@ -79,3 +79,39 @@ cac doi tuong container, window, controller,
 
 1. Bat dau khoi render co ban theo thiet ke cung.
 -> rect, text, icon.
+
+2. ID duoc sinh theo hash stack, dam bao giong nhau sau moi lan ve.
+
+static void hash(mu_Id *hash, const void *data, int size) {
+  const unsigned char *p = data;
+  while (size--) {
+    *hash = (*hash ^ *p++) * 16777619;
+  }
+}
+
+mu_Id mu_get_id(mu_Context *ctx, const void *data, int size) {
+  int idx = ctx->id_stack.idx;
+  mu_Id res = (idx > 0) ? ctx->id_stack.items[idx - 1] : HASH_INITIAL;
+  hash(&res, data, size);
+  ctx->last_id = res;
+  return res;
+}
+
+3. Container la doi tuong luu thong tin giua cac fram vi tri cuon, dong mo ->
+    thong tin runtime.
+Cac container duoc luu trong 1 poll giua cac frame duoc truy van thong qua id
+Chuoi lenh ve -> toi uu khong sinh lai.
+Kich thuoc, kich thuoc vung ben trong,
+Content -> cho cuon
+Vi tri cuon truoc do
+Zindex
+trang thai dong mo.
+
+4. id_stack -> dung de sinh id theo hash
+
+5. Ctainer stack -> runtime build moi moi khung
+6. Root list -> danh sach cac cua so de so sanh zindex -> thu tu ve truoc sau 
+7. push_jump -> dau chuoi lenh ve.
+Sau khi co thu tu ve thuc hien nhay den cac vi tri ve -> mot dang render engin.
+8. Kiem tra vi tri chuot de thuc hien cac thao tac input
+9. Stack clip
