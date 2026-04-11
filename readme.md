@@ -1,4 +1,45 @@
 Install lib: 
+
+git clone --depth=1 https://gitlab.com/bzip2/bzip2 lib/bzip2/
+cmake -S lib/bzip2/ -B lib/build/bzip2/ \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=lib/install/ \
+    -DBUILD_SHARED_LIBS=OFF
+cmake --build lib/build/bzip2/
+cmake --install lib/build/bzip2/
+
+git clone --depth=1 https://github.com/madler/zlib.git lib/zlib/
+cmake -S lib/zlib/ -B lib/build/zlib/ \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=lib/install/ \
+    -DBUILD_SHARED_LIBS=OFF
+cmake --build lib/build/zlib/
+cmake --install lib/build/zlib/
+
+Download libpng https://libpng.sourceforge.io/index.html
+cmake -S lib/libpng/ -B lib/build/libpng/ \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=lib/install/ \
+    -DBUILD_SHARED_LIBS=OFF
+cmake --build lib/build/libpng/
+cmake --install lib/build/libpng/
+
+git clone --depth=1 https://github.com/google/brotli.git --branch=v1.2.0 lib/brotli/
+cmake -S lib/brotli/ -B lib/build/brotli/ \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=lib/install/ \
+    -DBUILD_SHARED_LIBS=OFF
+cmake --build lib/build/brotli/
+cmake --install lib/build/brotli/
+
+Download lib freetype from https://download.savannah.gnu.org/releases/freetype/
+cmake -S lib/freetype-2.14.3/ -B lib/build/freetype/ \
+    -DCMAKE_INSTALL_PREFIX=lib/install/ \
+    -DBUILD_SHARED_LIBS=ON \
+    -DCMAKE_PREFIX_PATH=lib/install/
+cmake --build lib/build/freetype/
+cmake --install lib/build/freetype/
+
 git clone --depth=1 https://github.com/libsdl-org/SDL.git --branch=release-3.2.18 lib/SDL
 cmake -S lib/SDL -B lib/build/SDL \
     -DCMAKE_BUILD_TYPE=Release \
@@ -8,7 +49,6 @@ cmake -S lib/SDL -B lib/build/SDL \
     -DSDL_VIDEO=ON \
     -DSDL_WAYLAND=ON \
     -DSDL_X11=OFF
-cmake -C lib/build/SDL --build
 cmake --build lib/build/SDL -j5
 cmake --install lib/build/SDL
 
@@ -18,20 +58,44 @@ cmake -S lib/SDL_image -B lib/build/SDL_image \
     -DCMAKE_INSTALL_PREFIX=lib/install/ \
     -DSDL3_DIR=lib/install/ \
     -DBUILD_SHARED_LIBS=OFF
-cmake -C lib/build/SDL_image --build
 cmake --build lib/build/SDL_image -j5
 cmake --install lib/build/SDL_image
+
+git clone --depth=1 https://github.com/harfbuzz/harfbuzz.git --branch=14.1.0 lib/harfbuzz
+cmake -S lib/harfbuzz -B lib/build/harfbuzz \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=lib/install/ \
+    -DBUILD_SHARED_LIBS=OFF \
+    -DCMAKE_PREFIX_PATH=lib/install/ \
+    -DHB_HAVE_FREETYPE=ON
+cmake --build lib/build/harfbuzz -j5
+cmake --install lib/build/harfbuzz
+
+git clone --depth=1 https://github.com/sammycage/plutovg.git --branch=v1.3.2 lib/plutovg
+cmake -S lib/plutovg -B lib/build/plutovg \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=lib/install/ \
+    -DBUILD_SHARED_LIBS=OFF
+cmake --build lib/build/plutovg -j5
+cmake --install lib/build/plutovg
+
+<!-- git clone --depth=1 https://github.com/sammycage/plutosvg.git --branch=v0.0.7 lib/plutosvg -->
+<!-- cmake -S lib/plutosvg -B lib/build/plutosvg \ -->
+<!--     -DCMAKE_BUILD_TYPE=Release \ -->
+<!--     -DCMAKE_INSTALL_PREFIX=lib/install/ \ -->
+<!--     -DBUILD_SHARED_LIBS=OFF -->
+<!-- cmake --build lib/build/plutosvg -j5 -->
+<!-- cmake --install lib/build/plutosvg -->
 
 git clone --depth=1 https://github.com/libsdl-org/SDL_ttf.git --branch=release-3.2.2 lib/SDL_ttf
 cmake -S lib/SDL_ttf -B lib/build/SDL_ttf \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX=lib/install/ \
     -DSDL3_DIR=lib/install/ \
-    -DBUILD_SHARED_LIBS=OFF
-cmake -C lib/build/SDL_ttf --build
+    -DBUILD_SHARED_LIBS=OFF \
+    -DCMAKE_PREFIX_PATH=lib/install
 cmake --build lib/build/SDL_ttf -j5
 cmake --install lib/build/SDL_ttf
-
 
 Ham init khoi tao opengl render.
 
@@ -75,6 +139,13 @@ Cac doi tuong build in.
 scroll doi tuong
 
 cac doi tuong container, window, controller,
+
+
+
+mu_begin_window_ex:
+    -> Lay id moi cho doi tuong cua so hien tai. Giu nguy giua cac frame
+    -> Lay container tu pool. Giu nguyen giua cac frame.
+    -> Kiem tra trang thai cua container dang mo, dong, an hien.
 
 
 1. Bat dau khoi render co ban theo thiet ke cung.

@@ -198,30 +198,29 @@ pub fn beginWindow(
     }
     beginRootContainer(ctx, container.?);
     const rect = container.?.*.rect;
-    const body = rect;
-
-    if (~opt & microui.MU_OPT_NOTITLE) {
-        ctx.draw_frame(ctx, rect, microui.MU_COLOR_WINDOWBG);
+    var body = rect;
+    if ((~opt & microui.MU_OPT_NOTITLE) != 0) {
+        drawFrame(ctx, rect, microui.MU_COLOR_WINDOWBG);
     }
 
-    if (~opt & microui.MU_OPT_NOTITLE) {
-        const titleRect = rect;
-        titleRect.h = ctx.text_height(ctx.style.font);
-        ctx.draw_frame(ctx, titleRect, microui.MU_COLOR_TITLEBG);
+    if ((~opt & microui.MU_OPT_NOTITLE) != 0) {
+        var titleRect = rect;
+        titleRect.h = draw.textHeight(ctx.*.style.*.font);
+        drawFrame(ctx, titleRect, microui.MU_COLOR_TITLEBG);
 
-        if (~opt & microui.MU_OPT_NOTITLE) {
+        if ((~opt & microui.MU_OPT_NOTITLE) != 0) {
             const titleId = getId(ctx, "!title", 6);
             microui.mu_update_control(ctx, titleId, titleRect, opt);
             microui.mu_draw_control_text(ctx, title, titleRect, microui.MU_COLOR_TITLETEXT, opt);
-            if (titleId == ctx.focus and ctx.mouse_down == microui.MU_MOUSE_LEFT) {
-                container.?.rect.x += ctx.mouse_delta.x;
-                container.?.rect.y += ctx.mouse_delta.y;
+            if (titleId == ctx.*.focus and ctx.*.mouse_down == microui.MU_MOUSE_LEFT) {
+                container.*.rect.x += ctx.*.mouse_delta.x;
+                container.*.rect.y += ctx.*.mouse_delta.y;
             }
             body.y += titleRect.h;
             body.h -= titleRect.h;
         }
 
-        if (~opt & microui.MU_OPT_NOCLOSE) {
+        if ((~opt & microui.MU_OPT_NOCLOSE) != 0) {
             const closeId = getId(ctx, "!close", 6);
             const closeRect = muRect(
                 titleRect.x + titleRect.w - titleRect.w,
@@ -232,13 +231,13 @@ pub fn beginWindow(
             titleRect.w -= closeRect.w;
             microui.mu_draw_icon(
                 ctx,
-                closeId,
+                @as(c_int, @intCast(closeId)),
                 closeRect,
-                ctx.style.colors[microui.MU_COLOR_TITLETEXT],
+                ctx.*.style.*.colors[microui.MU_COLOR_TITLETEXT],
             );
             microui.mu_update_control(ctx, closeId, closeRect, opt);
-            if (ctx.mouse_pressed == microui.MU_MOUSE_LEFT and closeId == ctx.focus) {
-                ctx.open = false;
+            if (ctx.*.mouse_pressed == microui.MU_MOUSE_LEFT and closeId == ctx.*.focus) {
+                container.*.open = 0;
             }
         }
     }
