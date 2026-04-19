@@ -8,18 +8,19 @@ const ui = @import("ui.zig");
 fn drawWindow(ctx: *microui.mu_Context) void {
     ui.begin(ctx);
     const windowRect = ui.muRect(350, 250, 300, 240);
-    ui.beginWindow(ctx, "View", windowRect, 0);
-    if (microui.mu_begin_window(ctx, "View", windowRect) != 0) {
-        const layour = [_]c_int{-1};
-        microui.mu_layout_row(ctx, 1, &layour, -25);
-        microui.mu_begin_panel(ctx, "Log Output");
-        _ = microui.mu_get_current_container(ctx);
-        microui.mu_layout_row(ctx, 1, &layour, -1);
-        microui.mu_label(ctx, "Blue:");
-        microui.mu_end_panel(ctx);
-        microui.mu_end_window(ctx);
-    }
-    microui.mu_end(ctx);
+    _ = ui.beginWindow(ctx, "View", windowRect, 0);
+
+    // const layour = [_]c_int{-1};
+    // microui.mu_layout_row(ctx, 1, &layour, -25);
+    // microui.mu_begin_panel(ctx, "Log Output");
+    // _ = microui.mu_get_current_container(ctx);
+    // microui.mu_layout_row(ctx, 1, &layour, -1);
+    // microui.mu_label(ctx, "Blue:");
+    // microui.mu_end_panel(ctx);
+    // microui.mu_end_window(ctx);
+
+    ui.endWindow(ctx);
+    ui.end(ctx);
 }
 
 pub fn main() !void {

@@ -120,10 +120,87 @@ pub fn begin(ctx: [*c]microui.mu_Context) void {
     ctx.*.frame += 1;
 }
 
+pub fn debugCommandList(ctx: [*c]microui.mu_Context) void {
+    std.debug.print("Command List **************\n", .{});
+    const cmd: [*c]microui.mu_Command =
+        @ptrCast(@alignCast(&ctx.*.command_list.items));
+    std.debug.print("dst {?}\n", .{cmd.*.jump.dst});
+}
+
+pub fn end(ctx: [*c]microui.mu_Context) void {
+    std.debug.assert(ctx.*.container_stack.idx == 0);
+    std.debug.assert(ctx.*.clip_stack.idx == 0);
+    std.debug.assert(ctx.*.id_stack.idx == 0);
+    std.debug.assert(ctx.*.layout_stack.idx == 0);
+
+    if (ctx.*.scroll_target != null) {
+        ctx.*.scroll_target.*.scroll.x += ctx.*.scroll_delta.x;
+        ctx.*.scroll_target.*.scroll.y += ctx.*.scroll_delta.y;
+    }
+
+    if (ctx.*.updated_focus == 0) {
+        ctx.*.focus = 0;
+    }
+    ctx.*.updated_focus = 0;
+
+    if (ctx.*.mouse_pressed != 0 and ctx.*.next_hover_root != 0 and ctx.*.next_hover_root.*.zindex < ctx.*.last_zindex and
+        ctx.*.next_hover_root.*.zindex >= 0)
+    {
+        microui.mu_bring_to_front(ctx, ctx.*.next_hover_root);
+    }
+
+    ctx.*.key_pressed = 0;
+    ctx.*.input_text[0] = '0';
+    ctx.*.mouse_pressed = 0;
+    ctx.*.scroll_delta = microui.mu_vec2(0, 0);
+    ctx.*.last_mouse_pos = ctx.*.mouse_pos;
+
+    std.debug.assert(ctx.*.root_list.idx > 0);
+    const size: usize = @intCast(ctx.*.root_list.idx);
+    const array = ctx.*.root_list.items[0..size];
+    std.sort.pdq([*c]microui.mu_Container, array, {}, struct {
+        pub fn lessThanZindex(
+            _: void,
+            a: [*c]microui.mu_Container,
+            b: [*c]microui.mu_Container,
+        ) bool {
+            return a[0].zindex < b[0].zindex;
+        }
+    }.lessThanZindex);
+
+    for (array, 0..) |container, index| {
+        if (index == 0) {
+            const container_command_ptr: [*]c_char =
+                @ptrCast(@alignCast(&ctx.*.command_list.items));
+            const container_command_draw_ptr: [*]c_char =
+                container_command_ptr + @sizeOf(microui.mu_JumpCommand);
+            const cmd: [*c]microui.mu_Command =
+                @ptrCast(@alignCast(&ctx.*.command_list.items));
+            cmd.*.jump.dst = container_command_draw_ptr;
+        } else {
+            const prev_container = array[index - 1];
+            prev_container.*.tail.*.jump.dst = container.*.head + 1;
+        }
+        if (index == size - 1) {
+            const last_index: usize = @intCast(ctx.*.command_list.idx);
+            const ptr = &ctx.*.command_list.items[last_index];
+            container.*.tail.*.jump.dst = ptr;
+        }
+    }
+}
+
 fn push(stk: anytype, val: anytype) void {
-    std.debug.assert(stk.idx < std.mem.len(stk.items));
-    stk.*.items[@as(usize, @intCast(stk.idx))] = val;
-    stk.*.idx += 1;
+    std.debug.assert(stk.idx < stk.items.len);
+    const index: usize = @intCast(stk.idx);
+    stk.items[index] = val;
+    stk.idx += 1;
+}
+
+fn pop(stk: anytype) void {
+    var index: usize = @intCast(stk.*.idx);
+    std.debug.assert(index > 0);
+    index -= 1;
+    stk.*.idx = @intCast(index);
 }
 
 const HASH_INITIAL: usize = 2166136261;
@@ -148,28 +225,53 @@ fn getId(ctx: [*c]microui.mu_Context, data: [*c]const u8, size: usize) microui.m
 }
 
 fn getContainer(ctx: [*c]microui.mu_Context, id: microui.mu_Id, opt: c_int) [*c]microui.mu_Container {
-    var idx = microui.mu_pool_get(ctx, ctx.*.container_pool, microui.MU_CONTAINERPOOL_SIZE, id);
+    var idx = microui.mu_pool_get(ctx, &(ctx.*.container_pool), microui.MU_CONTAINERPOOL_SIZE, id);
     if (idx >= 0) {
-        if (ctx.*.containers[idx].open or ~opt & microui.MU_OPT_CLOSED) {
-            microui.mu_pool_update(ctx, ctx.*.container_pool, idx);
+        const index: usize = @intCast(idx);
+        if (ctx.*.containers[index].open != 0 or (~opt & microui.MU_OPT_CLOSED) != 0) {
+            microui.mu_pool_update(ctx, &ctx.*.container_pool, idx);
         }
-        return &ctx.*.containers[idx];
+        return &ctx.*.containers[index];
     }
-    if (opt & microui.MU_OPT_CLOSED) {
+    if ((opt & microui.MU_OPT_CLOSED) != 0) {
         return null;
     }
-    idx = microui.pool_init(ctx, ctx.*.container_pool, microui.MU_CONTAINERPOOL_SIZE, id);
-    var cnt = &ctx.*.containers[idx];
-    std.mem.setzero(microui.mu_Container, cnt);
+    idx = microui.mu_pool_init(ctx, &ctx.*.container_pool, microui.MU_CONTAINERPOOL_SIZE, id);
+    const index: usize = @intCast(idx);
+    var cnt = &ctx.*.containers[index];
+    cnt.* = std.mem.zeroes(microui.mu_Container);
     cnt.open = 1;
     microui.mu_bring_to_front(ctx, cnt);
     return cnt;
 }
 
-pub fn pushJump(ctx: [*c]microui.mu_Context, dst: [*c]const microui.mu_Command) [*c]microui.mu_JumpCommand {
-    const cmd = push(ctx.*.command_list, microui.mu_push_command(ctx, microui.MU_COMMAND_JUMP, microui.MU_COMMANDLIST_SIZE));
-    cmd.?.*.jump.dst = dst;
-    return cmd.?.*.jump;
+pub fn pushCommand(
+    ctx: [*c]microui.mu_Context,
+    cmd_type: u8,
+    cmd_size: usize,
+) [*c]microui.mu_Command {
+    // std.debug.assert((@as(usize, @intCast(ctx.*.command_list.idx)) + cmd_size) < microui.MU_COMMANDLIST_SIZE);
+    // const buffer_ptr: [*]c_char = @ptrCast(&ctx.*.command_list.items);
+    // const last_cmd_ptr = buffer_ptr + @as(usize, @intCast(ctx.*.command_list.idx));
+    // var cmd: microui.mu_Command = undefined;
+    // const tmp: [*]c_char = @ptrCast(&cmd);
+    // @memcpy(tmp[0..@sizeOf(microui.mu_Command)], last_cmd_ptr);
+    // cmd.base.type = cmd_type;
+    // cmd.base.size = @intCast(cmd_size);
+    // ctx.*.command_list.idx += @intCast(cmd_size);
+    // return @ptrCast(last_cmd_ptr);
+    // // return cmd;
+    return microui.mu_push_command(ctx, cmd_type, @intCast(cmd_size));
+}
+
+pub fn pushJump(
+    ctx: [*c]microui.mu_Context,
+    dst: [*c]const microui.mu_Command,
+) [*c]microui.mu_JumpCommand {
+    const cmd = pushCommand(ctx, microui.MU_COMMAND_JUMP, @sizeOf(microui.mu_JumpCommand));
+    cmd.?.*.jump.dst = @constCast(dst);
+    const result: [*c]microui.mu_JumpCommand = @ptrCast(cmd);
+    return result;
 }
 
 pub fn beginRootContainer(ctx: [*c]microui.mu_Context, cnt: [*c]microui.mu_Container) void {
@@ -186,60 +288,46 @@ pub fn beginWindow(
     windowRect: microui.mu_Rect,
     opt: c_int,
 ) c_int {
-    const windowId = getId(ctx, title, std.mem.len(title));
-    const container = getContainer(ctx, windowId, opt);
-    if (container == null or container.?.*.open == 0) {
+    const lengh = std.mem.len(title);
+    const windowId = microui.mu_get_id(ctx, title, @intCast(lengh));
+    const container = microui.get_container(ctx, windowId, opt);
+    if (container == null or container.*.open == 0) {
         return 0;
     }
-    push(ctx.*.id_stack, windowId);
+
+    push(&ctx.*.id_stack, windowId);
 
     if (container.?.*.rect.w == 0) {
         container.?.*.rect = windowRect;
     }
-    beginRootContainer(ctx, container.?);
-    const rect = container.?.*.rect;
-    var body = rect;
-    if ((~opt & microui.MU_OPT_NOTITLE) != 0) {
-        drawFrame(ctx, rect, microui.MU_COLOR_WINDOWBG);
-    }
 
-    if ((~opt & microui.MU_OPT_NOTITLE) != 0) {
-        var titleRect = rect;
-        titleRect.h = draw.textHeight(ctx.*.style.*.font);
-        drawFrame(ctx, titleRect, microui.MU_COLOR_TITLEBG);
+    microui.begin_root_container(ctx, container.?);
+    const body = container.*.rect;
+    const rect = body;
+    drawFrame(ctx, rect, microui.MU_COLOR_WINDOWBG);
+    microui.push_container_body(ctx, container.?, body, opt);
+    microui.mu_push_clip_rect(ctx, rect);
 
-        if ((~opt & microui.MU_OPT_NOTITLE) != 0) {
-            const titleId = getId(ctx, "!title", 6);
-            microui.mu_update_control(ctx, titleId, titleRect, opt);
-            microui.mu_draw_control_text(ctx, title, titleRect, microui.MU_COLOR_TITLETEXT, opt);
-            if (titleId == ctx.*.focus and ctx.*.mouse_down == microui.MU_MOUSE_LEFT) {
-                container.*.rect.x += ctx.*.mouse_delta.x;
-                container.*.rect.y += ctx.*.mouse_delta.y;
-            }
-            body.y += titleRect.h;
-            body.h -= titleRect.h;
-        }
+    return 0;
+}
 
-        if ((~opt & microui.MU_OPT_NOCLOSE) != 0) {
-            const closeId = getId(ctx, "!close", 6);
-            const closeRect = muRect(
-                titleRect.x + titleRect.w - titleRect.w,
-                titleRect.y,
-                titleRect.h,
-                titleRect.h,
-            );
-            titleRect.w -= closeRect.w;
-            microui.mu_draw_icon(
-                ctx,
-                @as(c_int, @intCast(closeId)),
-                closeRect,
-                ctx.*.style.*.colors[microui.MU_COLOR_TITLETEXT],
-            );
-            microui.mu_update_control(ctx, closeId, closeRect, opt);
-            if (ctx.*.mouse_pressed == microui.MU_MOUSE_LEFT and closeId == ctx.*.focus) {
-                container.*.open = 0;
-            }
-        }
-    }
-    microui.push_container_body(ctx, container, body, opt);
+pub fn popClipRect(ctx: [*c]microui.mu_Context) void {
+    pop(&ctx.*.clip_stack);
+}
+
+pub fn endRootContainer(ctx: [*c]microui.mu_Context) void {
+    const cnt = microui.mu_get_current_container(ctx);
+    const jump_command = pushJump(ctx, null);
+    cnt.*.tail = @ptrCast(jump_command);
+    const raw_ptr: [*]c_char = @ptrCast(&ctx.*.command_list.items);
+    const end_ptr = raw_ptr + @as(usize, @intCast(ctx.*.command_list.idx));
+    cnt.*.head.*.jump.dst = end_ptr;
+    // popClipRect(ctx);
+    microui.mu_pop_clip_rect(ctx);
+    microui.pop_container(ctx);
+}
+
+pub fn endWindow(ctx: [*c]microui.mu_Context) void {
+    popClipRect(ctx);
+    endRootContainer(ctx);
 }
