@@ -1,6 +1,7 @@
 const sdl = @import("sdl.zig").sdl;
 const microui = @import("sdl.zig").microui;
 const atlas = @import("sdl.zig").atlas;
+const std = @import("std");
 
 pub fn loadAtlas(renderer: *sdl.SDL_Renderer) !*sdl.SDL_Texture {
     var texture: [atlas.ATLAS_WIDTH * atlas.ATLAS_HEIGHT * 4]u8 = undefined;

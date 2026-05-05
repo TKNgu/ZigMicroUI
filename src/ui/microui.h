@@ -340,4 +340,14 @@ void push_container_body(mu_Context* ctx, mu_Container* cnt, mu_Rect body,
                          int opt);
 void end_root_container(mu_Context* ctx);
 void pop_container(mu_Context* ctx);
+mu_Layout* get_layout(mu_Context* ctx);
+void sample(mu_Context* ctx, const char* name, int opt);
+void push_container(mu_Context* ctx, mu_Container* cnt);
+void push_root(mu_Context* ctx, mu_Container* cnt);
+mu_Command* push_jump(mu_Context* ctx, mu_Command* dst);
+void mu_push_clip_root(mu_Context* ctx);
+void scrollbars(mu_Context* ctx, mu_Container* cnt, mu_Rect* body);
+void push_layout(mu_Context* ctx, mu_Rect body, mu_Vec2 scroll);
+
+static mu_Rect unclipped_rect = {0, 0, 0x1000000, 0x1000000};
 #endif

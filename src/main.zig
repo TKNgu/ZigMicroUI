@@ -4,30 +4,32 @@ const microui = @import("sdl.zig").microui;
 const draw = @import("draw.zig");
 const atlas = @import("sdl.zig").atlas;
 const ui = @import("ui.zig");
+const Context = @import("context.zig").Context;
+const Rect = @import("rect.zig").Rect;
 
-fn drawWindow(ctx: *microui.mu_Context) void {
-    ui.begin(ctx);
-    const windowRect = ui.muRect(350, 250, 300, 240);
-    _ = ui.beginWindow(ctx, "View", windowRect, 0);
-
-    // const layour = [_]c_int{-1};
-    // microui.mu_layout_row(ctx, 1, &layour, -25);
-    // microui.mu_begin_panel(ctx, "Log Output");
-    // _ = microui.mu_get_current_container(ctx);
-    // microui.mu_layout_row(ctx, 1, &layour, -1);
-    // microui.mu_label(ctx, "Blue:");
-    // microui.mu_end_panel(ctx);
-    // microui.mu_end_window(ctx);
-
-    ui.endWindow(ctx);
-    ui.end(ctx);
+fn logWindow(context: *Context) void {
+    context.begin();
+    const ctx = &context.ctx;
+    if (ui.beginWindow(context, "Log Window", Rect.init(350, 40, 300, 200), 0) != 0) {
+        const layout = [_]c_int{-1};
+        _ = context.layoutRow(1, &layout, -25);
+        ui.beginPanel(context, "Log Output");
+        _ = context.getCurrentContainer();
+        _ = context.layoutRow(1, &layout, -1);
+        ui.endPandl(ctx);
+        var buf = [_]u8{ '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '\n', 0 };
+        const layout2 = [_]c_int{ -70, -1 };
+        _ = ui.layoutRow(ctx, 2, &layout2, 0);
+        if ((ui.textBox(ctx, &buf, buf.len) & microui.MU_RES_SUBMIT) != 0) {
+            ui.setFocus(ctx, ctx.last_id);
+        }
+        ui.endWindow(ctx);
+    }
+    context.end();
 }
 
 pub fn main() !void {
-    var ctx: microui.mu_Context = undefined;
-    ui.muInit(&ctx);
-    ctx.text_width = draw.textWidth;
-    ctx.text_height = draw.textHeight;
+    var context = Context.init(draw.textWidth, draw.textHeight);
 
     if (!sdl.SDL_Init(sdl.SDL_INIT_VIDEO)) {
         return error.SDLInitFailed;
@@ -60,8 +62,7 @@ pub fn main() !void {
         while (sdl.SDL_PollEvent(&event)) {
             switch (event.type) {
                 sdl.SDL_EVENT_QUIT => isRunning = false,
-                sdl.SDL_EVENT_MOUSE_MOTION => microui.mu_input_mousemove(
-                    &ctx,
+                sdl.SDL_EVENT_MOUSE_MOTION => context.inputMouseMove(
                     @intFromFloat(event.motion.x),
                     @intFromFloat(event.motion.y),
                 ),
@@ -72,20 +73,26 @@ pub fn main() !void {
                         sdl.SDL_BUTTON_MIDDLE => microui.MU_MOUSE_MIDDLE,
                         else => 0,
                     };
-                    const x: i32 = @intFromFloat(event.motion.x);
-                    const y: i32 = @intFromFloat(event.motion.y);
                     if (b != 0 and event.type == sdl.SDL_EVENT_MOUSE_BUTTON_DOWN) {
-                        microui.mu_input_mousedown(&ctx, x, y, b);
+                        context.inputMouseDown(
+                            @intFromFloat(event.motion.x),
+                            @intFromFloat(event.motion.y),
+                            b,
+                        );
                     }
                     if (b != 0 and event.type == sdl.SDL_EVENT_MOUSE_BUTTON_UP) {
-                        microui.mu_input_mouseup(&ctx, x, y, b);
+                        context.inputMouseUp(
+                            @intFromFloat(event.motion.x),
+                            @intFromFloat(event.motion.y),
+                            b,
+                        );
                     }
                 },
                 else => {},
             }
         }
 
-        drawWindow(&ctx);
+        logWindow(&context);
 
         draw.clear(renderer) catch {
             isRunning = false;
@@ -93,7 +100,7 @@ pub fn main() !void {
         };
 
         var cmd: [*c]microui.mu_Command = 0;
-        while (microui.mu_next_command(&ctx, &cmd) != 0) {
+        while (context.nextCommand(&cmd)) {
             const cmdType = cmd.*;
             const tmp = switch (cmdType.type) {
                 microui.MU_COMMAND_RECT => draw.drawRect(renderer, cmdType),
