@@ -4,10 +4,25 @@ const defaultStype = @import("style.zig").defaultStype;
 
 fn push(stk: anytype, val: anytype) void {
     std.debug.assert(stk.*.idx < stk.*.items.len);
-    const index: usize = @intCast(stk.*.idx);
-    var items = stk.*.items;
+    var items = &stk.*.items;
+    var index: usize = @intCast(stk.*.idx);
     items[index] = val;
-    stk.*.idx += 1;
+    index += 1;
+    stk.*.idx = @intCast(index);
+}
+
+fn get(stk: anytype) @TypeOf(stk.*.items[0]) {
+    std.debug.assert(stk.*.idx < stk.*.items.len);
+    const items = &stk.*.items;
+    const index: usize = @intCast(stk.*.idx - 1);
+    return items[index];
+}
+
+fn getPointer(stk: anytype) @TypeOf(&stk.*.items[0]) {
+    std.debug.assert(stk.*.idx < stk.*.items.len);
+    const items = &stk.*.items;
+    const index: usize = @intCast(stk.*.idx - 1);
+    return &items[index];
 }
 
 pub const Context = struct {
@@ -202,25 +217,11 @@ pub const Context = struct {
     }
 
     pub fn getCurrentContainer(self: *Context) [*c]microui.mu_Container {
-        const ctx: *microui.mu_Context = @ptrCast(&self.ctx);
-        const context: [*c]microui.mu_Context = @ptrCast(ctx);
-        std.debug.assert(context.*.container_stack.idx > 0);
-        const items: [32][*c]microui.mu_Container = context.*.container_stack.items;
-        const index: usize = @intCast(context.*.container_stack.idx - 1);
-        return items[index];
-    }
-
-    pub fn getLayout(self: *Context) [*c]microui.mu_Layout {
-        const ctx: [*c]microui.mu_Context = @ptrCast(&self.ctx);
-        const context: [*c]microui.mu_Context = @ptrCast(ctx);
-        std.debug.assert(context.*.layout_stack.idx < context.*.layout_stack.items.len);
-        var items = context.*.layout_stack.items;
-        const index: usize = @intCast(context.*.layout_stack.idx - 1);
-        return &items[index];
+        return get(&self.ctx.container_stack);
     }
 
     pub fn layoutRow(self: *Context, items: c_int, widths: [*c]const c_int, height: c_int) void {
-        const layout: [*c]microui.mu_Layout = self.getLayout();
+        const layout: [*c]microui.mu_Layout = getPointer(&self.ctx.layout_stack);
         const layout_size: usize = @intCast(layout.*.items);
         if (widths != null) {
             std.debug.assert(items <= microui.MU_MAX_WIDTHS);
@@ -232,33 +233,51 @@ pub const Context = struct {
         layout.*.item_index = 0;
     }
 
-    pub fn pushContainer(self: *Context, cnt: [*c]microui.mu_Container) void {
+    pub fn pushCommand(self: *Context, cmd_type: u8, cmd_size: usize) [*c]microui.mu_Command {
         const ctx: [*c]microui.mu_Context = @ptrCast(&self.ctx);
-        const context: *microui.mu_Context = @ptrCast(ctx);
-        std.debug.assert(context.*.container_stack.idx < context.*.container_stack.items.len);
-        var items: [][*c]microui.mu_Container = &context.*.container_stack.items;
-        const index: usize = @intCast(context.*.container_stack.idx);
-        items[index] = cnt;
-        ctx.*.container_stack.idx += 1;
+        return microui.mu_push_command(ctx, cmd_type, @intCast(cmd_size));
     }
 
-    // pub fn beginRootContainer(self: *Context, cnt: [*c]microui.mu_Container) void {
-    //     const ctx: *microui.mu_Context = &self.ctx;
-    //     pushContainer(ctx, cnt);
-    //     pushRoot(ctx, cnt);
-    //     cnt.*.head = @ptrCast(pushJump(ctx, null));
-    //     const context: [*c]microui.mu_Context = @ptrCast(ctx);
-    //     if (rectOverlapsVec2(cnt.*.rect, context.*.mouse_pos)) {
-    //         if (context.*.next_hover_root != null) {
-    //             context.*.next_hover_root = cnt;
-    //         } else {
-    //             // TODO: this is a hack to make sure the hover root is always the
-    //             // const next_hover_root: [*c]microui.mu_Container = context.*.next_hover_root;
-    //             // if (cnt.*.zindex > next_hover_root.*.zindex) {
-    //             //     context.*.next_hover_root = cnt;
-    //             // }
-    //         }
-    //     }
-    //     pushClipRectRoot(ctx);
-    // }
+    pub fn rectOverlapsVec2(r: microui.mu_Rect, p: microui.mu_Vec2) bool {
+        return p.x >= r.x and p.x < r.x + r.w and p.y >= r.y and p.y < r.y + r.h;
+    }
+
+    pub fn pushContainer(self: *Context, cnt: [*c]microui.mu_Container) void {
+        push(&self.ctx.container_stack, cnt);
+    }
+
+    pub fn pushRoot(self: *Context, cnt: [*c]microui.mu_Container) void {
+        push(&self.ctx.root_list, cnt);
+    }
+
+    pub fn pushClipRectRoot(self: *Context) void {
+        const unclipped_rect = microui.mu_Rect{
+            .x = 0,
+            .y = 0,
+            .w = 0x1000000,
+            .h = 0x1000000,
+        };
+        push(&self.ctx.clip_stack, unclipped_rect);
+    }
+
+    pub fn pushJump(
+        self: *Context,
+        dst: [*c]const microui.mu_JumpCommand,
+    ) [*c]microui.mu_JumpCommand {
+        const cmd = self.pushCommand(microui.MU_COMMAND_JUMP, @sizeOf(microui.mu_JumpCommand));
+        cmd.?.*.jump.dst = @constCast(dst);
+        return @ptrCast(cmd);
+    }
+
+    pub fn beginRootContainer(self: *Context, cnt: [*c]microui.mu_Container) void {
+        self.pushContainer(cnt);
+        self.pushRoot(cnt);
+        cnt.*.head = @ptrCast(self.pushJump(null));
+        if (rectOverlapsVec2(cnt.*.rect, self.ctx.mouse_pos) and
+            (self.ctx.hover_root == null or cnt.*.zindex > self.ctx.hover_root.*.zindex))
+        {
+            self.ctx.hover_root = cnt;
+        }
+        self.pushClipRectRoot();
+    }
 };

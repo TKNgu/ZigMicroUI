@@ -6,11 +6,13 @@ const atlas = @import("sdl.zig").atlas;
 const ui = @import("ui.zig");
 const Context = @import("context.zig").Context;
 const Rect = @import("rect.zig").Rect;
+const Window = @import("window.zig").Window;
 
 fn logWindow(context: *Context) void {
     context.begin();
+
     const ctx = &context.ctx;
-    if (ui.beginWindow(context, "Log Window", Rect.init(350, 40, 300, 200), 0) != 0) {
+    if (Window.begin(context, "Log Window", Rect.init(350, 40, 300, 200), 0)) {
         const layout = [_]c_int{-1};
         _ = context.layoutRow(1, &layout, -25);
         ui.beginPanel(context, "Log Output");
@@ -23,8 +25,9 @@ fn logWindow(context: *Context) void {
         if ((ui.textBox(ctx, &buf, buf.len) & microui.MU_RES_SUBMIT) != 0) {
             ui.setFocus(ctx, ctx.last_id);
         }
-        ui.endWindow(ctx);
+        Window.end(context);
     }
+
     context.end();
 }
 
