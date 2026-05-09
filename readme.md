@@ -16,8 +16,10 @@ cmake -S lib/zlib/ -B lib/build/zlib/ \
 cmake --build lib/build/zlib/
 cmake --install lib/build/zlib/
 
-Download libpng https://libpng.sourceforge.io/index.html
-cmake -S lib/libpng/ -B lib/build/libpng/ \
+wget https://sourceforge.net/projects/libpng/files/libpng16/1.6.58/libpng-1.6.58.tar.xz/download \
+    -O lib/libpng.tar.xz
+tar xvf lib/libpng.tar.xz -C lib
+cmake -S lib/libpng-1.6.58/ -B lib/build/libpng/ \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX=lib/install/ \
     -DBUILD_SHARED_LIBS=OFF
@@ -32,7 +34,9 @@ cmake -S lib/brotli/ -B lib/build/brotli/ \
 cmake --build lib/build/brotli/
 cmake --install lib/build/brotli/
 
-Download lib freetype from https://download.savannah.gnu.org/releases/freetype/
+wget https://download.savannah.gnu.org/releases/freetype/freetype-2.14.3.tar.xz \
+    -O lib/freetype-2.14.3.tar.xz
+tar xvf lib/freetype-2.14.3.tar.xz -C lib/
 cmake -S lib/freetype-2.14.3/ -B lib/build/freetype/ \
     -DCMAKE_INSTALL_PREFIX=lib/install/ \
     -DBUILD_SHARED_LIBS=ON \
@@ -47,8 +51,8 @@ cmake -S lib/SDL -B lib/build/SDL \
     -DSDL_SHARED=OFF \
     -DSDL_STATIC=ON \
     -DSDL_VIDEO=ON \
-    -DSDL_WAYLAND=ON \
-    -DSDL_X11=OFF
+    -DSDL_WAYLAND=OFF \
+    -DSDL_X11=ON
 cmake --build lib/build/SDL -j5
 cmake --install lib/build/SDL
 
@@ -78,14 +82,6 @@ cmake -S lib/plutovg -B lib/build/plutovg \
     -DBUILD_SHARED_LIBS=OFF
 cmake --build lib/build/plutovg -j5
 cmake --install lib/build/plutovg
-
-<!-- git clone --depth=1 https://github.com/sammycage/plutosvg.git --branch=v0.0.7 lib/plutosvg -->
-<!-- cmake -S lib/plutosvg -B lib/build/plutosvg \ -->
-<!--     -DCMAKE_BUILD_TYPE=Release \ -->
-<!--     -DCMAKE_INSTALL_PREFIX=lib/install/ \ -->
-<!--     -DBUILD_SHARED_LIBS=OFF -->
-<!-- cmake --build lib/build/plutosvg -j5 -->
-<!-- cmake --install lib/build/plutosvg -->
 
 git clone --depth=1 https://github.com/libsdl-org/SDL_ttf.git --branch=release-3.2.2 lib/SDL_ttf
 cmake -S lib/SDL_ttf -B lib/build/SDL_ttf \

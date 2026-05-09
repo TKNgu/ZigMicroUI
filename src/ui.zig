@@ -4,6 +4,68 @@ const drctxaw = @import("draw.zig");
 const Context = @import("context.zig").Context;
 const Rect = @import("rect.zig").Rect;
 
+pub fn intersectRects(r1: microui.mu_Rect, r2: microui.mu_Rect) microui.mu_Rect {
+    const x1 = @max(r1.x, r2.x);
+    const y1 = @max(r1.y, r2.y);
+    var x2 = @min(r1.x + r1.w, r2.x + r2.w);
+    var y2 = @min(r1.y + r1.h, r2.y + r2.h);
+    if (x2 < x1) {
+        x2 = x1;
+    }
+    if (y2 < y1) {
+        y2 = y1;
+    }
+    return .{ .x = x1, .y = y1, .w = x2 - x1, .h = y2 - y1 };
+}
+
+pub fn getClipRect(ctx: [*c]microui.mu_Context) microui.mu_Rect {
+    const idx = ctx.*.clip_stack.idx;
+    std.debug.assert(idx > 0);
+    const id = idx - 1;
+    const last: usize = @intCast(id);
+    const context: *microui.mu_Context = @ptrCast(ctx);
+    return context.*.clip_stack.items[last];
+}
+
+pub fn drawRect(ctx: [*c]microui.mu_Context, rect: microui.mu_Rect, color: microui.mu_Color) callconv(.c) void {
+    var cmd: *microui.mu_Command = undefined;
+    const clipRect = intersectRects(rect, getClipRect(ctx));
+    if (clipRect.w > 0 and clipRect.h > 0) {
+        cmd = microui.mu_push_command(
+            ctx,
+            microui.MU_COMMAND_RECT,
+            @sizeOf(microui.mu_RectCommand),
+        );
+        cmd.*.rect.rect = clipRect;
+        cmd.*.rect.color = color;
+    }
+}
+
+pub fn drawFrame(ctx: [*c]microui.mu_Context, rect: microui.mu_Rect, colorId: c_int) callconv(.c) void {
+    if (colorId < 0) {
+        std.debug.panic("Color ID must be >= 0", .{});
+    }
+    const id: usize = @intCast(colorId);
+    const stype: *microui.mu_Style = @ptrCast(ctx.*.style);
+    const color = stype.*.colors[id];
+    drawRect(ctx, rect, color);
+    if (colorId == microui.MU_COLOR_SCROLLBASE or
+        colorId == microui.MU_COLOR_SCROLLTHUMB or
+        colorId == microui.MU_COLOR_TITLEBG)
+    {
+        return;
+    }
+
+    const style: *microui.mu_Style = @ptrCast(ctx.*.style);
+    if (style.*.colors[microui.MU_COLOR_BORDER].a != 0) {
+        microui.mu_draw_box(
+            ctx,
+            .{ .x = rect.x - 1, .y = rect.y - 1, .w = rect.w + 2, .h = rect.h + 2 },
+            style.*.colors[microui.MU_COLOR_BORDER],
+        );
+    }
+}
+
 pub fn rectOverlapsVec2(r: microui.mu_Rect, p: microui.mu_Vec2) bool {
     return p.x >= r.x and p.x < r.x + r.w and p.y >= r.y and p.y < r.y + r.h;
 }
@@ -111,18 +173,18 @@ pub fn beginWindow(
     windowRect: Rect,
     opt: c_int,
 ) c_int {
-    const ctx = &context.ctx;
     const windowId: c_uint = @intCast(context.getId(title));
-    const container = context.getContainer2(windowId, opt);
+    context.pushId(windowId);
+
+    const container = context.getContainer(windowId, opt);
     if (container == null or container.*.open == 0) {
         return 0;
     }
-
-    push(&ctx.*.id_stack, windowId);
     if (container.?.*.rect.w == 0) {
         container.?.*.rect = windowRect.getRect();
     }
 
+    const ctx = &context.ctx;
     beginRootContainer(ctx, container.?);
     var body = container.*.rect;
     const rect = body;
@@ -206,97 +268,8 @@ pub fn beginWindow(
     return microui.MU_RES_ACTIVE;
 }
 
-fn getContainer(ctx: [*c]microui.mu_Context, id: microui.mu_Id, opt: c_int) [*c]microui.mu_Container {
-    const ctx_ptr: *microui.mu_Context = @ptrCast(ctx);
-    var idx = microui.mu_pool_get(
-        ctx_ptr,
-        &(ctx_ptr.*.container_pool),
-        microui.MU_CONTAINERPOOL_SIZE,
-        id,
-    );
-    if (idx >= 0) {
-        const index: usize = @intCast(idx);
-        if (ctx_ptr.*.containers[index].open != 0 or (~opt & microui.MU_OPT_CLOSED) != 0) {
-            microui.mu_pool_update(ctx, &ctx_ptr.*.container_pool, idx);
-        }
-        return &ctx_ptr.*.containers[index];
-    }
-    if ((opt & microui.MU_OPT_CLOSED) != 0) {
-        return null;
-    }
-    idx = microui.mu_pool_init(ctx_ptr, &ctx_ptr.*.container_pool, microui.MU_CONTAINERPOOL_SIZE, id);
-    const index: usize = @intCast(idx);
-    var cnt = &ctx_ptr.*.containers[index];
-    cnt.* = std.mem.zeroes(microui.mu_Container);
-    cnt.open = 1;
-    microui.mu_bring_to_front(ctx_ptr, cnt);
-    return cnt;
-}
-
 fn expandRect(rect: microui.mu_Rect, n: i32) microui.mu_Rect {
     return .{ .x = rect.x - n, .y = rect.y - n, .w = rect.w + n * 2, .h = rect.h + n * 2 };
-}
-
-fn intersectRects(r1: microui.mu_Rect, r2: microui.mu_Rect) microui.mu_Rect {
-    const x1 = @max(r1.x, r2.x);
-    const y1 = @max(r1.y, r2.y);
-    var x2 = @min(r1.x + r1.w, r2.x + r2.w);
-    var y2 = @min(r1.y + r1.h, r2.y + r2.h);
-    if (x2 < x1) {
-        x2 = x1;
-    }
-    if (y2 < y1) {
-        y2 = y1;
-    }
-    return .{ .x = x1, .y = y1, .w = x2 - x1, .h = y2 - y1 };
-}
-
-fn getClipRect(ctx: [*c]microui.mu_Context) microui.mu_Rect {
-    const idx = ctx.*.clip_stack.idx;
-    std.debug.assert(idx > 0);
-    const id = idx - 1;
-    const last: usize = @intCast(id);
-    const context: *microui.mu_Context = @ptrCast(ctx);
-    return context.*.clip_stack.items[last];
-}
-
-fn drawRect(ctx: [*c]microui.mu_Context, rect: microui.mu_Rect, color: microui.mu_Color) callconv(.c) void {
-    var cmd: *microui.mu_Command = undefined;
-    const clipRect = intersectRects(rect, getClipRect(ctx));
-    if (clipRect.w > 0 and clipRect.h > 0) {
-        cmd = microui.mu_push_command(
-            ctx,
-            microui.MU_COMMAND_RECT,
-            @sizeOf(microui.mu_RectCommand),
-        );
-        cmd.*.rect.rect = clipRect;
-        cmd.*.rect.color = color;
-    }
-}
-
-fn drawFrame(ctx: [*c]microui.mu_Context, rect: microui.mu_Rect, colorId: c_int) callconv(.c) void {
-    if (colorId < 0) {
-        std.debug.panic("Color ID must be >= 0", .{});
-    }
-    const id: usize = @intCast(colorId);
-    const stype: *microui.mu_Style = @ptrCast(ctx.*.style);
-    const color = stype.*.colors[id];
-    drawRect(ctx, rect, color);
-    if (colorId == microui.MU_COLOR_SCROLLBASE or
-        colorId == microui.MU_COLOR_SCROLLTHUMB or
-        colorId == microui.MU_COLOR_TITLEBG)
-    {
-        return;
-    }
-
-    const style: *microui.mu_Style = @ptrCast(ctx.*.style);
-    if (style.*.colors[microui.MU_COLOR_BORDER].a != 0) {
-        microui.mu_draw_box(
-            ctx,
-            expandRect(rect, 1),
-            style.*.colors[microui.MU_COLOR_BORDER],
-        );
-    }
 }
 
 pub fn pushCommand(
@@ -490,7 +463,7 @@ pub fn beginPanelEx(context: *Context, name: [:0]const u8, opt: c_int) void {
     const id = context.getId(name);
     const ctx = &context.ctx;
     context.pushId(id);
-    const container = getContainer(ctx, ctx.*.last_id, opt);
+    const container = context.getContainer(ctx.*.last_id, opt);
     container.*.rect = layoutNex(ctx);
     if ((~opt & microui.MU_OPT_NOFRAME) != 0) {
         drawFrame(ctx, container.*.rect, microui.MU_COLOR_PANELBG);

@@ -10,75 +10,14 @@ fn push(stk: anytype, val: anytype) void {
     stk.*.idx += 1;
 }
 
-pub fn intersectRects(r1: microui.mu_Rect, r2: microui.mu_Rect) microui.mu_Rect {
-    const x1 = @max(r1.x, r2.x);
-    const y1 = @max(r1.y, r2.y);
-    var x2 = @min(r1.x + r1.w, r2.x + r2.w);
-    var y2 = @min(r1.y + r1.h, r2.y + r2.h);
-    if (x2 < x1) {
-        x2 = x1;
-    }
-    if (y2 < y1) {
-        y2 = y1;
-    }
-    return .{ .x = x1, .y = y1, .w = x2 - x1, .h = y2 - y1 };
-}
-
-pub fn getClipRect(ctx: [*c]microui.mu_Context) microui.mu_Rect {
-    const idx = ctx.*.clip_stack.idx;
-    std.debug.assert(idx > 0);
-    const id = idx - 1;
-    const last: usize = @intCast(id);
-    const context: *microui.mu_Context = @ptrCast(ctx);
-    return context.*.clip_stack.items[last];
-}
-
-pub fn drawRect(ctx: [*c]microui.mu_Context, rect: microui.mu_Rect, color: microui.mu_Color) callconv(.c) void {
-    var cmd: *microui.mu_Command = undefined;
-    const clipRect = intersectRects(rect, getClipRect(ctx));
-    if (clipRect.w > 0 and clipRect.h > 0) {
-        cmd = microui.mu_push_command(
-            ctx,
-            microui.MU_COMMAND_RECT,
-            @sizeOf(microui.mu_RectCommand),
-        );
-        cmd.*.rect.rect = clipRect;
-        cmd.*.rect.color = color;
-    }
-}
-
-pub fn drawFrame(ctx: [*c]microui.mu_Context, rect: microui.mu_Rect, colorId: c_int) callconv(.c) void {
-    if (colorId < 0) {
-        std.debug.panic("Color ID must be >= 0", .{});
-    }
-    const id: usize = @intCast(colorId);
-    const stype: *microui.mu_Style = @ptrCast(ctx.*.style);
-    const color = stype.*.colors[id];
-    drawRect(ctx, rect, color);
-    if (colorId == microui.MU_COLOR_SCROLLBASE or
-        colorId == microui.MU_COLOR_SCROLLTHUMB or
-        colorId == microui.MU_COLOR_TITLEBG)
-    {
-        return;
-    }
-
-    const style: *microui.mu_Style = @ptrCast(ctx.*.style);
-    if (style.*.colors[microui.MU_COLOR_BORDER].a != 0) {
-        microui.mu_draw_box(
-            ctx,
-            .{ .x = rect.x - 1, .y = rect.y - 1, .w = rect.w + 2, .h = rect.h + 2 },
-            style.*.colors[microui.MU_COLOR_BORDER],
-        );
-    }
-}
-
 pub const Context = struct {
     const TextWidth = fn (data: ?*anyopaque, str: [*c]const u8, len: c_int) callconv(.c) c_int;
     const TextHeight = fn (data: ?*anyopaque) callconv(.c) c_int;
+    const DrawFrame = fn (ctx: [*c]microui.mu_Context, rect: microui.mu_Rect, colorId: c_int) callconv(.c) void;
 
     ctx: microui.mu_Context,
 
-    pub fn init(textWidth: TextWidth, textHeight: TextHeight) Context {
+    pub fn init(textWidth: TextWidth, textHeight: TextHeight, drawFrame: DrawFrame) Context {
         var ctx: Context = undefined;
         ctx.ctx = std.mem.zeroes(microui.mu_Context);
         ctx.ctx.draw_frame = drawFrame;
@@ -239,7 +178,7 @@ pub const Context = struct {
         cnt.*.zindex = ctx_ptr.last_zindex;
     }
 
-    pub fn getContainer2(self: *Context, id: microui.mu_Id, opt: c_int) [*c]microui.mu_Container {
+    pub fn getContainer(self: *Context, id: microui.mu_Id, opt: c_int) [*c]microui.mu_Container {
         const ctx_ptr: *microui.mu_Context = @ptrCast(&self.ctx);
         var idx = self.poolGet(&ctx_ptr.*.container_pool, microui.MU_CONTAINERPOOL_SIZE, id);
         if (idx >= 0) {
@@ -292,4 +231,34 @@ pub const Context = struct {
         layout.*.size.y = height;
         layout.*.item_index = 0;
     }
+
+    pub fn pushContainer(self: *Context, cnt: [*c]microui.mu_Container) void {
+        const ctx: [*c]microui.mu_Context = @ptrCast(&self.ctx);
+        const context: *microui.mu_Context = @ptrCast(ctx);
+        std.debug.assert(context.*.container_stack.idx < context.*.container_stack.items.len);
+        var items: [][*c]microui.mu_Container = &context.*.container_stack.items;
+        const index: usize = @intCast(context.*.container_stack.idx);
+        items[index] = cnt;
+        ctx.*.container_stack.idx += 1;
+    }
+
+    // pub fn beginRootContainer(self: *Context, cnt: [*c]microui.mu_Container) void {
+    //     const ctx: *microui.mu_Context = &self.ctx;
+    //     pushContainer(ctx, cnt);
+    //     pushRoot(ctx, cnt);
+    //     cnt.*.head = @ptrCast(pushJump(ctx, null));
+    //     const context: [*c]microui.mu_Context = @ptrCast(ctx);
+    //     if (rectOverlapsVec2(cnt.*.rect, context.*.mouse_pos)) {
+    //         if (context.*.next_hover_root != null) {
+    //             context.*.next_hover_root = cnt;
+    //         } else {
+    //             // TODO: this is a hack to make sure the hover root is always the
+    //             // const next_hover_root: [*c]microui.mu_Container = context.*.next_hover_root;
+    //             // if (cnt.*.zindex > next_hover_root.*.zindex) {
+    //             //     context.*.next_hover_root = cnt;
+    //             // }
+    //         }
+    //     }
+    //     pushClipRectRoot(ctx);
+    // }
 };

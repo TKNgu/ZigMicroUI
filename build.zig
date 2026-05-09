@@ -15,12 +15,14 @@ pub fn build(b: *std.Build) void {
     });
     exe.root_module.addIncludePath(b.path("src/ui/"));
 
-    exe.root_module.addIncludePath(.{
-        .cwd_relative = "lib/install/include",
-    });
-    exe.root_module.addLibraryPath(.{
-        .cwd_relative = "lib/install/lib64",
-    });
+    if (std.Io.Dir.cwd().access(b.*.graph.*.io, "lib/install", .{})) {
+        exe.root_module.addIncludePath(.{
+            .cwd_relative = "lib/install/include",
+        });
+        exe.root_module.addLibraryPath(.{
+            .cwd_relative = "lib/install/lib64",
+        });
+    } else |_| {}
     exe.root_module.linkSystemLibrary("SDL3", .{});
     exe.root_module.linkSystemLibrary("SDL3_image", .{});
     exe.root_module.linkSystemLibrary("SDL3_ttf", .{});

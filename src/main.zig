@@ -29,7 +29,7 @@ fn logWindow(context: *Context) void {
 }
 
 pub fn main() !void {
-    var context = Context.init(draw.textWidth, draw.textHeight);
+    var context = Context.init(draw.textWidth, draw.textHeight, ui.drawFrame);
 
     if (!sdl.SDL_Init(sdl.SDL_INIT_VIDEO)) {
         return error.SDLInitFailed;
