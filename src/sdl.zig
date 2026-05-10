@@ -5,6 +5,7 @@ pub const sdl = @cImport({
 });
 const math = @import("math.zig");
 const Color = @import("color.zig").Color;
+const std = @import("std");
 
 pub const Window = struct {
     window: *sdl.SDL_Window,
@@ -84,6 +85,65 @@ pub const draw = struct {
             .h = rect_draw.size.y,
         };
         if (!sdl.SDL_RenderFillRect(renderer.renderer, &sdlRect)) {
+            return error.RenderError;
+        }
+    }
+};
+
+pub const DrawEngine = struct {
+    pub const Rect = struct {
+        rect_draw: math.rect.Rect2(f32),
+        color: Color,
+    };
+    pub const FillRect = struct {
+        rect_draw: math.rect.Rect2(f32),
+        color: Color,
+    };
+    const DrawCommand = union(enum) {
+        Rect: Rect,
+        FillRect: FillRect,
+    };
+
+    background: Color,
+    draw_commands: [1024]DrawCommand,
+    idx: usize,
+
+    pub fn init(background: Color) DrawEngine {
+        return DrawEngine{
+            .background = background,
+            .draw_commands = undefined,
+            .idx = 0,
+        };
+    }
+
+    pub fn reset(self: *DrawEngine) void {
+        self.*.idx = 0;
+    }
+
+    pub fn push(self: *DrawEngine, cmd: DrawCommand) !void {
+        if (self.*.idx >= self.*.draw_commands.len) {
+            return error.DrawEngineFull;
+        }
+        self.*.draw_commands[self.*.idx] = cmd;
+        self.*.idx += 1;
+    }
+
+    pub fn render(self: *DrawEngine, renderer: *Renderer) !void {
+        if (!renderer.clear(self.*.background)) {
+            return error.RenderError;
+        }
+        var idx: usize = 0;
+        while (idx < self.*.idx) : (idx += 1) {
+            switch (self.*.draw_commands[idx]) {
+                .Rect => |cmd| {
+                    try draw.rect(renderer, cmd.rect_draw, cmd.color);
+                },
+                .FillRect => |cmd| {
+                    try draw.fillRect(renderer, cmd.rect_draw, cmd.color);
+                },
+            }
+        }
+        if (!renderer.present()) {
             return error.RenderError;
         }
     }

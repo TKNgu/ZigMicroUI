@@ -4,6 +4,7 @@ const math = @import("math.zig");
 const draw = @import("sdl.zig").draw;
 const Window = @import("sdl.zig").Window;
 const Renderer = @import("sdl.zig").Renderer;
+const DrawEngine = @import("sdl.zig").DrawEngine;
 const color = @import("color.zig");
 
 pub fn main() !u8 {
@@ -18,6 +19,9 @@ pub fn main() !u8 {
     var renderer = try Renderer.init(&window);
     defer renderer.deinit();
 
+    const theme = color.DebugHighContrast;
+    var draw_engine = DrawEngine.init(theme.background);
+
     const rect = math.rect.Rect2(f32).init(
         math.vec.Vec2(f32).init(0, 0),
         math.vec.Vec2(f32).init(100, 100),
@@ -25,6 +29,7 @@ pub fn main() !u8 {
 
     var isRunning = true;
     while (isRunning) {
+        // Handle events
         var event: sdl.SDL_Event = undefined;
         while (sdl.SDL_PollEvent(&event)) {
             switch (event.type) {
@@ -33,21 +38,28 @@ pub fn main() !u8 {
             }
         }
 
-        if (!renderer.clear(color.DebugHighContrast.background)) {
+        // Draw ui
+        draw_engine.reset();
+        draw_engine.push(.{ .FillRect = .{
+            .rect_draw = rect,
+            .color = theme.panel,
+        } }) catch {
             isRunning = false;
             continue;
-        }
-
-        draw.fillRect(&renderer, rect, color.DebugHighContrast.background2) catch {
+        };
+        draw_engine.push(.{ .Rect = .{
+            .rect_draw = rect,
+            .color = theme.text,
+        } }) catch {
             isRunning = false;
             continue;
         };
 
-        if (!renderer.present()) {
+        // Render ui
+        draw_engine.render(&renderer) catch {
             isRunning = false;
             continue;
-        }
-
+        };
         sdl.SDL_Delay(16);
     }
 
