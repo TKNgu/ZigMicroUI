@@ -252,10 +252,6 @@ pub fn textBox(ctx: [*c]microui.mu_Context, buf: [*c]u8, bufsz: usize) c_int {
     return microui.mu_textbox(ctx, buf, buffer_size);
 }
 
-pub fn beginPanel(context: *Context, name: [:0]const u8) void {
-    beginPanelEx(context, name, 0);
-}
-
 pub fn pushContainer(ctx: [*c]microui.mu_Context, cnt: [*c]microui.mu_Container) void {
     const context: *microui.mu_Context = @ptrCast(ctx);
     std.debug.assert(context.*.container_stack.idx < context.*.container_stack.items.len);
@@ -352,31 +348,12 @@ pub fn pushContainerBody(
     cnt.*.body = tmp_body;
 }
 
-pub fn beginPanelEx(context: *Context, name: [:0]const u8, opt: c_int) void {
-    const id = context.getId(name);
-    const ctx = &context.ctx;
-    context.pushId(id);
-    const container = context.getContainer(ctx.*.last_id, opt);
-    container.*.rect = layoutNex(ctx);
-    if ((~opt & microui.MU_OPT_NOFRAME) != 0) {
-        drawFrame(ctx, container.*.rect, microui.MU_COLOR_PANELBG);
-    }
-    pushContainer(ctx, container);
-    pushContainerBody(ctx, container, container.*.rect, opt);
-    pushClipRect(ctx, container.*.body);
-}
-
 pub fn getCurrentContainer(ctx: [*c]microui.mu_Context) [*c]microui.mu_Container {
     const context: [*c]microui.mu_Context = @ptrCast(ctx);
     std.debug.assert(context.*.container_stack.idx > 0);
     const items: [32][*c]microui.mu_Container = context.*.container_stack.items;
     const index: usize = @intCast(context.*.container_stack.idx - 1);
     return items[index];
-}
-
-pub fn endPandl(ctx: [*c]microui.mu_Context) void {
-    microui.mu_pop_clip_rect(ctx);
-    microui.pop_container(ctx);
 }
 
 pub fn layoutRow(ctx: [*c]microui.mu_Context, items: c_int, widths: [*c]const c_int, height: c_int) void {
@@ -394,11 +371,6 @@ pub fn layoutRow(ctx: [*c]microui.mu_Context, items: c_int, widths: [*c]const c_
 
 pub fn label(ctx: [*c]microui.mu_Context, text: [*c]const u8) void {
     microui.mu_draw_control_text(ctx, text, getLayout(ctx).*.body, microui.MU_COLOR_TEXT, 0);
-}
-
-pub fn endPanel(ctx: [*c]microui.mu_Context) void {
-    microui.mu_pop_clip_rect(ctx);
-    microui.pop_container(ctx);
 }
 
 fn push(stk: anytype, val: anytype) void {

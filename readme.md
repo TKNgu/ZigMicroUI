@@ -182,3 +182,13 @@ trang thai dong mo.
 Sau khi co thu tu ve thuc hien nhay den cac vi tri ve -> mot dang render engin.
 8. Kiem tra vi tri chuot de thuc hien cac thao tac input
 9. Stack clip
+
+
+
+###################################
+
+1 Draw rec
+
+
+
+
