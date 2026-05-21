@@ -1,32 +1,20 @@
 const std = @import("std");
 
 pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
+    const exe = b.addExecutable(.{ .name = "sample", .root_module = b.createModule(.{
+        .root_source_file = b.path("src/main.zig"),
+        .target = b.standardTargetOptions(.{}),
+        .optimize = b.standardOptimizeOption(.{}),
+    }) });
 
-    const exe = b.addExecutable(.{
-        .name = "sample",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/main.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
-    });
-
-    exe.addCSourceFile(.{
-        .file = b.path("src/ui/microui.c"),
-        .flags = &[_][]const u8{
-            "-fno-sanitize=alignment",
-        },
-    });
-    exe.addIncludePath(b.path("src/ui/"));
-
-    exe.root_module.addIncludePath(.{
-        .cwd_relative = "lib/install/include",
-    });
-    exe.root_module.addLibraryPath(.{
-        .cwd_relative = "lib/install/lib64",
-    });
+    if (std.Io.Dir.cwd().access(b.*.graph.*.io, "lib/install", .{})) {
+        exe.root_module.addIncludePath(.{
+            .cwd_relative = "lib/install/include",
+        });
+        exe.root_module.addLibraryPath(.{
+            .cwd_relative = "lib/install/lib64",
+        });
+    } else |_| {}
     exe.root_module.linkSystemLibrary("SDL3", .{});
     exe.root_module.linkSystemLibrary("SDL3_image", .{});
     exe.root_module.linkSystemLibrary("SDL3_ttf", .{});
