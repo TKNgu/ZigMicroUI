@@ -12,7 +12,7 @@ pub const Window = struct {
         if (window == null) {
             return error.SDLCreateWindowFailed;
         }
-        return Window{
+        return .{
             .window = window.?,
         };
     }
@@ -30,7 +30,7 @@ pub const Renderer = struct {
         if (renderer == null) {
             return error.SDLCreateRendererFailed;
         }
-        return Renderer{
+        return .{
             .renderer = renderer.?,
         };
     }

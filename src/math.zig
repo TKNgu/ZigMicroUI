@@ -5,7 +5,7 @@ pub const vec = struct {
             y: T,
 
             pub fn init(x: T, y: T) Vec2(@TypeOf(x)) {
-                return Vec2(@TypeOf(x)){
+                return .{
                     .x = x,
                     .y = y,
                 };
@@ -20,11 +20,34 @@ pub const rect = struct {
             pos: vec.Vec2(T),
             size: vec.Vec2(T),
 
-            pub fn init(pos: vec.Vec2(T), size: vec.Vec2(T)) Rect2(@TypeOf(pos.x)) {
-                return Rect2(@TypeOf(pos.x)){
+            pub fn init(x: T, y: T, w: T, h: T) Rect2(@TypeOf(x)) {
+                return .{
+                    .pos = vec.Vec2(T).init(x, y),
+                    .size = vec.Vec2(T).init(w, h),
+                };
+            }
+
+            pub fn initVec(pos: vec.Vec2(T), size: vec.Vec2(T)) Rect2(@TypeOf(pos.x)) {
+                return .{
                     .pos = pos,
                     .size = size,
                 };
+            }
+
+            pub inline fn getWidth(self: Rect2(T)) T {
+                return self.size.x;
+            }
+
+            pub inline fn getHeight(self: Rect2(T)) T {
+                return self.size.y;
+            }
+
+            pub inline fn getX(self: Rect2(T)) T {
+                return self.pos.x;
+            }
+
+            pub inline fn getY(self: Rect2(T)) T {
+                return self.pos.y;
             }
         };
     }
