@@ -16,142 +16,132 @@ pub fn drawFrame(
 }
 
 // Layout
-pub fn createRowLayout(comptime N: usize) type {
+pub fn createArrayLayout(comptime N: usize) type {
     return struct {
-        index: usize,
-        widths: [N]f32,
-        height: f32,
+        const Self = @This();
 
-        pub fn init(widths: *const [N]f32, height: f32) @This() {
-            var layout = @This(){
-                .index = 0,
-                .widths = undefined,
-                .height = height,
-            };
-            std.mem.copyForwards(f32, &layout.widths, widths);
+        index: usize = 0,
+        items: [N]f32 = undefined,
+
+        pub fn init(items: *const [N]f32) Self {
+            var layout: Self = .{};
+            std.mem.copyForwards(f32, &layout.items, items);
             return layout;
         }
 
-        pub fn next(self: *@This()) math.vec.Vec2(f32) {
+        pub fn next(self: *Self) f32 {
             if (self.index >= N) {
                 self.index = 0;
             }
-            const width = self.widths[self.index];
+            const item = self.items[self.index];
             self.index += 1;
-            return math.vec.Vec2(f32).init(width, self.height);
+            return item;
         }
 
-        pub inline fn getIsEnd(self: @This()) bool {
+        pub inline fn getIsEnd(self: *const Self) bool {
             return self.index >= N;
         }
 
-        pub inline fn nextLine(self: *@This()) void {
+        pub inline fn nextLine(self: *Self) void {
             self.index = 0;
         }
     };
 }
 
-pub fn createLayout(comptime N: usize) type {
-    return struct {
-        body: math.rect.Rect2(f32),
-        position: math.vec.Vec2(f32),
-        row_layout: createRowLayout(N),
+pub const Layout = struct {
+    const VTable = struct {
+        next: *const fn (*anyopaque) math.rect.Rect2(f32),
 
-        pub fn init(body: math.rect.Rect2(f32), widths: *const [N]f32, height: f32) @This() {
+        fn create(comptime T: type) VTable {
+            return VTable{
+                .next = struct {
+                    fn next(ptr: *anyopaque) math.rect.Rect2(f32) {
+                        const self: *T = @ptrCast(@alignCast(ptr));
+                        return self.next();
+                    }
+                }.next,
+            };
+        }
+    };
+
+    ptr: *anyopaque,
+    vtable: *const VTable,
+
+    pub inline fn next(self: *const Layout) math.rect.Rect2(f32) {
+        return self.vtable.*.next(self.ptr);
+    }
+};
+
+pub fn createRowLayout(comptime N: usize) type {
+    return struct {
+        const Self = @This();
+        const VTable = Layout.VTable.create(Self);
+
+        body: math.rect.Rect2(f32),
+        layout: createArrayLayout(N),
+
+        pub fn init(body: math.rect.Rect2(f32), heights: *const [N]f32) Self {
             return .{
                 .body = body,
-                .position = body.pos,
-                .row_layout = createRowLayout(N).init(widths, height),
+                .layout = createArrayLayout(N).init(heights),
             };
         }
 
-        pub fn next(self: *@This()) math.rect.Rect2(f32) {
-            var size = self.row_layout.next();
-            if (size.x < 0) {
-                size.x += self.body.getWidth() - self.position.x;
-            }
-            const rect = math.rect.Rect2(f32).initVec(self.position, size);
-            if (self.row_layout.getIsEnd()) {
-                self.position.x = self.body.getX();
-                self.position.y += self.row_layout.height;
-            } else {
-                self.position.x += size.x;
-            }
-            return rect;
+        pub inline fn getBase(self: *Self) Layout {
+            return Layout{ .ptr = self, .vtable = &Self.VTable };
         }
 
-        pub inline fn nextLine(self: *@This()) void {
-            self.row_layout.nextLine();
-            self.position.x = self.body.getX();
-            self.position.y += self.row_layout.height;
+        pub fn next(self: *Self) math.rect.Rect2(f32) {
+            var height = self.layout.next();
+            if (height < 0) {
+                height += self.body.getHeight();
+            } else if (height == 0) {
+                height = self.body.getHeight();
+            }
+            const rect = math.rect.Rect2(f32).initVec(
+                self.body.pos,
+                math.vec.Vec2(f32).init(self.body.getWidth(), height),
+            );
+            self.body.pos.selfAdd(math.vec.Vec2(f32).init(0, height));
+            self.body.size.selfSub(math.vec.Vec2(f32).init(0, height));
+            return rect;
         }
     };
 }
 
-// Window
-pub fn drawWindow(
-    render_engine: *render.RenderEngine,
-    window_style: *const style.Style,
-    window_rect: math.rect.Rect2(f32),
-) !void {
-    try drawFrame(
-        render_engine,
-        window_rect,
-        window_style.*.window_color,
-        window_style.*.window_border_color,
-    );
+pub fn createColumnLayout(comptime N: usize) type {
+    return struct {
+        const Self = @This();
+        const VTable = Layout.VTable.create(Self);
 
-    const titlebar_rect = math.rect.Rect2(f32).init(
-        window_rect.getX(),
-        window_rect.getY(),
-        window_rect.getWidth(),
-        window_style.*.window_titlebar_size,
-    );
-    try drawFrame(
-        render_engine,
-        titlebar_rect,
-        window_style.*.window_titlebar_color,
-        window_style.*.window_titlebar_border_color,
-    );
+        body: math.rect.Rect2(f32),
+        layout: createArrayLayout(N),
 
-    const tilebar_close_size = titlebar_rect.getHeight() - 4;
-    const titlebar_close_rect = math.rect.Rect2(f32).init(
-        titlebar_rect.getX() + titlebar_rect.getWidth() - tilebar_close_size - 2,
-        titlebar_rect.getY() + 2,
-        tilebar_close_size,
-        tilebar_close_size,
-    );
-    try drawFrame(
-        render_engine,
-        titlebar_close_rect,
-        window_style.*.button_color,
-        window_style.*.window_titlebar_border_color,
-    );
+        pub fn init(body: math.rect.Rect2(f32), widths: *const [N]f32) Self {
+            return .{
+                .body = body,
+                .layout = createArrayLayout(N).init(widths),
+            };
+        }
 
-    const statusbar_rect = math.rect.Rect2(f32).init(
-        window_rect.getX(),
-        window_rect.getY() + window_rect.getHeight() - window_style.*.window_statusbar_size,
-        window_rect.getWidth(),
-        window_style.*.window_statusbar_size,
-    );
-    try drawFrame(
-        render_engine,
-        statusbar_rect,
-        window_style.*.window_statusbar_color,
-        window_style.*.window_statusbar_border_color,
-    );
+        pub inline fn getBase(self: *Self) Layout {
+            return Layout{ .ptr = self, .vtable = &Self.VTable };
+        }
 
-    const statusbar_control_size = statusbar_rect.getHeight() - 4;
-    const statusbar_control_rect = math.rect.Rect2(f32).init(
-        statusbar_rect.getX() + statusbar_rect.getWidth() - statusbar_control_size - 2,
-        statusbar_rect.getY() + 2,
-        statusbar_control_size,
-        statusbar_control_size,
-    );
-    try drawFrame(
-        render_engine,
-        statusbar_control_rect,
-        window_style.*.button_color,
-        window_style.*.window_statusbar_border_color,
-    );
+        pub fn next(self: *Self) math.rect.Rect2(f32) {
+            var width = self.layout.next();
+            if (width < 0) {
+                width += self.body.getWidth();
+            } else if (width == 0) {
+                width = self.body.getWidth();
+            }
+            const rect = math.rect.Rect2(f32).initVec(
+                self.body.pos,
+                math.vec.Vec2(f32).init(width, self.body.getHeight()),
+            );
+            self.body.pos.selfAdd(math.vec.Vec2(f32).init(width, 0));
+            self.body.size.selfSub(math.vec.Vec2(f32).init(width, 0));
+            return rect;
+        }
+    };
 }

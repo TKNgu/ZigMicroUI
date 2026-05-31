@@ -20,7 +20,7 @@ pub fn main() !void {
     defer renderer.deinit();
 
     var render_engine = render.RenderEngine.init(&renderer);
-    var simple_style: style.Style = .{};
+    const simple_style: style.Style = .{};
 
     var is_running = true;
     while (is_running) {
@@ -45,64 +45,145 @@ pub fn main() !void {
             continue;
         }
 
-        const window_rect = math.rect.Rect2(f32).init(
-            100,
-            100,
-            600,
-            400,
-        );
-        try ui.drawWindow(
+        const window_rect = math.rect.Rect2(f32).init(100, 100, 600, 400);
+        try ui.drawFrame(
             &render_engine,
-            &simple_style,
             window_rect,
+            simple_style.window_color,
+            simple_style.window_border_color,
         );
 
-        const layout_body = math.rect.Rect2(f32).init(
-            window_rect.getX(),
-            window_rect.getY() + simple_style.window_titlebar_size,
-            window_rect.getWidth(),
-            window_rect.getHeight() - simple_style.window_titlebar_size - simple_style.window_statusbar_size,
-        );
-        var layout = ui.createLayout(2).init(
-            layout_body,
-            &[_]f32{ 100, -300 },
-            20,
-        );
-        var count: usize = 0;
-        while (count < 10) : (count += 1) {
-            {
-                const rect = layout.next();
+        var window_layout = ui.createRowLayout(5).init(window_rect, &.{ 20, 20, 20, -15, 15 });
+        {
+            const titlebar_rect = window_layout.next();
+            try ui.drawFrame(
+                &render_engine,
+                titlebar_rect,
+                simple_style.window_titlebar_color,
+                simple_style.window_titlebar_border_color,
+            );
+
+            var titlebar_layout = ui.createColumnLayout(3).init(titlebar_rect, &.{ 100, -20, 20 });
+            const titlebar_title_rect = titlebar_layout.next();
+            try ui.drawFrame(
+                &render_engine,
+                titlebar_title_rect,
+                simple_style.window_titlebar_title_color,
+                simple_style.window_titlebar_border_color,
+            );
+
+            _ = titlebar_layout.next();
+            const titlebar_close_rect = titlebar_layout.next();
+            try ui.drawFrame(
+                &render_engine,
+                titlebar_close_rect,
+                simple_style.button_color,
+                simple_style.window_titlebar_border_color,
+            );
+        }
+
+        {
+            const menu_rect = window_layout.next();
+            try ui.drawFrame(
+                &render_engine,
+                menu_rect,
+                simple_style.menu_color,
+                simple_style.menu_border_color,
+            );
+
+            var menu_layout = ui.createColumnLayout(5).init(menu_rect, &.{ 50, 50, 50, 50, 50 });
+            var count: usize = 0;
+            while (count < 5) : (count += 1) {
+                const menu_item_rect = menu_layout.next();
                 try ui.drawFrame(
                     &render_engine,
-                    rect,
-                    color.Nord.danger,
-                    color.Nord.border,
-                );
-            }
-            {
-                const rect = layout.next();
-                try ui.drawFrame(
-                    &render_engine,
-                    rect,
-                    color.Nord.danger,
-                    color.Nord.border,
+                    menu_item_rect,
+                    simple_style.menu_text_color,
+                    simple_style.menu_border_color,
                 );
             }
         }
 
-        // count = 0;
-        // while (count < 3) : (count += 1) {
-        //     var sub_count: usize = 0;
-        //     while (sub_count < 4) : (sub_count += 1) {
-        //         const rect = layout.next();
-        //         try ui.drawFrame(
-        //             &render_engine,
-        //             rect,
-        //             color.Nord.danger,
-        //             color.Nord.border,
-        //         );
-        //     }
-        // }
+        {
+            const toolbar_rect = window_layout.next();
+            try ui.drawFrame(
+                &render_engine,
+                toolbar_rect,
+                simple_style.menu_color,
+                simple_style.menu_border_color,
+            );
+
+            var toolbar_layout = ui.createColumnLayout(6).init(toolbar_rect, &.{ 20, 20, 20, 20, 20, 20 });
+            var count: usize = 0;
+            while (count < 10) : (count += 1) {
+                const toolbar_item_rect = toolbar_layout.next();
+                try ui.drawFrame(
+                    &render_engine,
+                    toolbar_item_rect,
+                    simple_style.menu_text_color,
+                    simple_style.menu_border_color,
+                );
+            }
+        }
+
+        {
+            const body_rect = window_layout.next();
+            try ui.drawFrame(
+                &render_engine,
+                body_rect,
+                simple_style.window_body_color,
+                simple_style.window_body_border_color,
+            );
+
+            var body_layout = ui.createColumnLayout(2).init(body_rect, &.{ 200, 0 });
+            {
+                const body_left_rect = body_layout.next();
+                try ui.drawFrame(
+                    &render_engine,
+                    body_left_rect,
+                    simple_style.window_body_color,
+                    simple_style.window_body_border_color,
+                );
+            }
+
+            {
+                const body_right_rect = body_layout.next();
+                try ui.drawFrame(
+                    &render_engine,
+                    body_right_rect,
+                    simple_style.window_body_color,
+                    simple_style.window_body_border_color,
+                );
+            }
+        }
+
+        {
+            const statusbar_rect = window_layout.next();
+            try ui.drawFrame(
+                &render_engine,
+                statusbar_rect,
+                simple_style.window_statusbar_color,
+                simple_style.window_statusbar_border_color,
+            );
+
+            var statusbar_layout = ui.createColumnLayout(3).init(statusbar_rect, &.{ 100, -30, 30 });
+            const statusbar_title_rect = statusbar_layout.next();
+            try ui.drawFrame(
+                &render_engine,
+                statusbar_title_rect,
+                simple_style.window_statusbar_title_color,
+                simple_style.window_statusbar_border_color,
+            );
+
+            _ = statusbar_layout.next();
+            const statusbar_close_rect = statusbar_layout.next();
+            try ui.drawFrame(
+                &render_engine,
+                statusbar_close_rect,
+                simple_style.button_color,
+                simple_style.window_statusbar_border_color,
+            );
+        }
 
         if (!renderer.present()) {
             is_running = false;

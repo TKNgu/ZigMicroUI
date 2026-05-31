@@ -1,3 +1,5 @@
+const std = @import("std");
+
 pub const vec = struct {
     pub fn Vec2(comptime T: type) type {
         return struct {
@@ -8,6 +10,30 @@ pub const vec = struct {
                 return .{
                     .x = x,
                     .y = y,
+                };
+            }
+
+            pub fn selfAdd(self: *@This(), b: @This()) void {
+                self.x += b.x;
+                self.y += b.y;
+            }
+
+            pub fn selfSub(self: *@This(), b: @This()) void {
+                self.x -= b.x;
+                self.y -= b.y;
+            }
+
+            pub fn add(self: *@This(), b: @This()) @This() {
+                return .{
+                    .x = self.x + b.x,
+                    .y = self.y + b.y,
+                };
+            }
+
+            pub fn sub(self: *@This(), b: @This()) @This() {
+                return .{
+                    .x = self.x - b.x,
+                    .y = self.y - b.y,
                 };
             }
         };
