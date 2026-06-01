@@ -8,6 +8,11 @@ const ui = @import("ui.zig");
 const style = @import("style.zig");
 
 pub fn main() !void {
+    const root_id: ui.ID = ui.HASH_INITIAL;
+    std.debug.print("root: {d}\n", .{root_id});
+    var tmp_id: ui.ID = root_id;
+    var mouse_pos: math.vec.Vec2(f32) = undefined;
+
     if (!csdl.SDL_Init(csdl.SDL_INIT_VIDEO)) {
         return error.SDLInitFailed;
     }
@@ -30,9 +35,14 @@ pub fn main() !void {
                 csdl.SDL_EVENT_QUIT => {
                     is_running = false;
                 },
+                csdl.SDL_EVENT_MOUSE_MOTION => {
+                    mouse_pos.x = e.motion.x;
+                    mouse_pos.y = e.motion.y;
+                },
                 else => {},
             }
         }
+        tmp_id = root_id;
 
         const background_color = simple_style.background_color;
         if (!renderer.clear(
@@ -80,6 +90,10 @@ pub fn main() !void {
                 simple_style.button_color,
                 simple_style.window_titlebar_border_color,
             );
+            ui.genSrcLineID(&tmp_id, @src());
+            if (titlebar_close_rect.contains(mouse_pos)) {
+                std.debug.print("Focus id {}\n", .{tmp_id});
+            }
         }
 
         {

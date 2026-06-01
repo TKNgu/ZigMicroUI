@@ -145,3 +145,27 @@ pub fn createColumnLayout(comptime N: usize) type {
         }
     };
 }
+
+// ID
+
+pub const ID = u32;
+pub const HASH_INITIAL: ID = 2166136261;
+
+pub fn hash(id: *ID, data: []const u8) void {
+    for (data) |c| {
+        id.* = (id.* ^ c) *% 16777619;
+    }
+}
+
+pub fn sourceLocationToString(comptime s: std.builtin.SourceLocation) []const u8 {
+    return std.fmt.comptimePrint("{d}:{d}:{s}:{s}", .{
+        s.column,
+        s.line,
+        s.file,
+        s.module,
+    });
+}
+
+pub fn genSrcLineID(id: *ID, comptime s: std.builtin.SourceLocation) void {
+    hash(id, sourceLocationToString(s));
+}
