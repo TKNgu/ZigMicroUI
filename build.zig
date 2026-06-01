@@ -7,14 +7,6 @@ pub fn build(b: *std.Build) void {
         .optimize = b.standardOptimizeOption(.{}),
     }) });
 
-    exe.root_module.addCSourceFile(.{
-        .file = b.path("src/ui/microui.c"),
-        .flags = &[_][]const u8{
-            "-fno-sanitize=alignment",
-        },
-    });
-    exe.root_module.addIncludePath(b.path("src/ui/"));
-
     if (std.Io.Dir.cwd().access(b.*.graph.*.io, "lib/install", .{})) {
         exe.root_module.addIncludePath(.{
             .cwd_relative = "lib/install/include",

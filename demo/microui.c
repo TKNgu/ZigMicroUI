@@ -50,6 +50,8 @@
     (stk).idx--;           \
   } while (0)
 
+static mu_Rect unclipped_rect = {0, 0, 0x1000000, 0x1000000};
+
 static mu_Style default_style = {
     /* font | size | padding | spacing | indent */
     NULL,
@@ -246,10 +248,6 @@ void mu_push_id(mu_Context* ctx, const void* data, int size) {
 
 void mu_pop_id(mu_Context* ctx) { pop(ctx->id_stack); }
 
-void mu_push_clip_root(mu_Context* ctx) {
-  push(ctx->clip_stack, unclipped_rect);
-}
-
 void mu_push_clip_rect(mu_Context* ctx, mu_Rect rect) {
   mu_Rect last = mu_get_clip_rect(ctx);
   push(ctx->clip_stack, intersect_rects(rect, last));
@@ -275,7 +273,7 @@ int mu_check_clip(mu_Context* ctx, mu_Rect r) {
   return MU_CLIP_PART;
 }
 
-void push_layout(mu_Context* ctx, mu_Rect body, mu_Vec2 scroll) {
+static void push_layout(mu_Context* ctx, mu_Rect body, mu_Vec2 scroll) {
   mu_Layout layout;
   int width = 0;
   memset(&layout, 0, sizeof(layout));
@@ -285,11 +283,11 @@ void push_layout(mu_Context* ctx, mu_Rect body, mu_Vec2 scroll) {
   mu_layout_row(ctx, 1, &width, 0);
 }
 
-mu_Layout* get_layout(mu_Context* ctx) {
+static mu_Layout* get_layout(mu_Context* ctx) {
   return &ctx->layout_stack.items[ctx->layout_stack.idx - 1];
 }
 
-void pop_container(mu_Context* ctx) {
+static void pop_container(mu_Context* ctx) {
   mu_Container* cnt = mu_get_current_container(ctx);
   mu_Layout* layout = get_layout(ctx);
   cnt->content_size.x = layout->max.x - layout->body.x;
@@ -305,7 +303,7 @@ mu_Container* mu_get_current_container(mu_Context* ctx) {
   return ctx->container_stack.items[ctx->container_stack.idx - 1];
 }
 
-mu_Container* get_container(mu_Context* ctx, mu_Id id, int opt) {
+static mu_Container* get_container(mu_Context* ctx, mu_Id id, int opt) {
   mu_Container* cnt;
   /* try to get existing container from pool */
   int idx = mu_pool_get(ctx, ctx->container_pool, MU_CONTAINERPOOL_SIZE, id);
@@ -436,7 +434,7 @@ int mu_next_command(mu_Context* ctx, mu_Command** cmd) {
   return 0;
 }
 
-mu_Command* push_jump(mu_Context* ctx, mu_Command* dst) {
+static mu_Command* push_jump(mu_Context* ctx, mu_Command* dst) {
   mu_Command* cmd;
   cmd = mu_push_command(ctx, MU_COMMAND_JUMP, sizeof(mu_JumpCommand));
   cmd->jump.dst = dst;
@@ -747,6 +745,7 @@ int mu_button_ex(mu_Context* ctx, const char* label, int icon, int opt) {
   mu_update_control(ctx, id, r, opt);
   /* handle click */
   if (ctx->mouse_pressed == MU_MOUSE_LEFT && ctx->focus == id) {
+    printf("Pressed\n");
     res |= MU_RES_SUBMIT;
   }
   /* draw */
@@ -1037,7 +1036,7 @@ void mu_end_treenode(mu_Context* ctx) {
     }                                                                       \
   } while (0)
 
-void scrollbars(mu_Context* ctx, mu_Container* cnt, mu_Rect* body) {
+static void scrollbars(mu_Context* ctx, mu_Container* cnt, mu_Rect* body) {
   int sz = ctx->style->scrollbar_size;
   mu_Vec2 cs = cnt->content_size;
   cs.x += ctx->style->padding * 2;
@@ -1057,8 +1056,8 @@ void scrollbars(mu_Context* ctx, mu_Container* cnt, mu_Rect* body) {
   mu_pop_clip_rect(ctx);
 }
 
-void push_container_body(mu_Context* ctx, mu_Container* cnt, mu_Rect body,
-                         int opt) {
+static void push_container_body(mu_Context* ctx, mu_Container* cnt,
+                                mu_Rect body, int opt) {
   if (~opt & MU_OPT_NOSCROLL) {
     scrollbars(ctx, cnt, &body);
   }
@@ -1066,7 +1065,7 @@ void push_container_body(mu_Context* ctx, mu_Container* cnt, mu_Rect body,
   cnt->body = body;
 }
 
-void begin_root_container(mu_Context* ctx, mu_Container* cnt) {
+static void begin_root_container(mu_Context* ctx, mu_Container* cnt) {
   push(ctx->container_stack, cnt);
   /* push container to roots list and push head command */
   push(ctx->root_list, cnt);
@@ -1083,7 +1082,7 @@ void begin_root_container(mu_Context* ctx, mu_Container* cnt) {
   push(ctx->clip_stack, unclipped_rect);
 }
 
-void end_root_container(mu_Context* ctx) {
+static void end_root_container(mu_Context* ctx) {
   /* push tail 'goto' jump command and set head 'skip' command. the final steps
   ** on initing these are done in mu_end() */
   mu_Container* cnt = mu_get_current_container(ctx);
@@ -1217,26 +1216,4 @@ void mu_begin_panel_ex(mu_Context* ctx, const char* name, int opt) {
 void mu_end_panel(mu_Context* ctx) {
   mu_pop_clip_rect(ctx);
   pop_container(ctx);
-}
-
-void push_container(mu_Context* ctx, mu_Container* cnt) {
-  push(ctx->container_stack, cnt);
-}
-
-void sample(mu_Context* ctx, const char* name, int opt) {
-  mu_Container* cnt;
-  mu_push_id(ctx, name, strlen(name));
-  cnt = get_container(ctx, ctx->last_id, opt);
-  cnt->rect = mu_layout_next(ctx);
-  if (~opt & MU_OPT_NOFRAME) {
-    ctx->draw_frame(ctx, cnt->rect, MU_COLOR_PANELBG);
-  }
-  push(ctx->container_stack, cnt);
-  push_container(ctx, cnt);
-  push_container_body(ctx, cnt, cnt->rect, opt);
-  mu_push_clip_rect(ctx, cnt->body);
-}
-
-void push_root(mu_Context* ctx, mu_Container* cnt) {
-  push(ctx->root_list, cnt);
 }

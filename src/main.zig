@@ -1,67 +1,209 @@
 const std = @import("std");
-const sdl = @import("sdl.zig").sdl;
+const sdl = @import("sdl.zig");
+const csdl = sdl.csdl;
+const render = @import("render.zig");
 const math = @import("math.zig");
-const draw = @import("sdl.zig").draw;
-const Window = @import("sdl.zig").Window;
-const Renderer = @import("sdl.zig").Renderer;
-const DrawEngine = @import("sdl.zig").DrawEngine;
 const color = @import("color.zig");
+const ui = @import("ui.zig");
+const style = @import("style.zig");
 
-pub fn main() !u8 {
-    if (!sdl.SDL_Init(sdl.SDL_INIT_VIDEO)) {
+pub fn main() !void {
+    const root_id: ui.ID = ui.HASH_INITIAL;
+    std.debug.print("root: {d}\n", .{root_id});
+    var tmp_id: ui.ID = root_id;
+    var mouse_pos: math.vec.Vec2(f32) = undefined;
+
+    if (!csdl.SDL_Init(csdl.SDL_INIT_VIDEO)) {
         return error.SDLInitFailed;
     }
-    defer sdl.SDL_Quit();
+    defer csdl.SDL_Quit();
 
-    var window = try Window.init("ZigUI", math.vec.Vec2(i32).init(800, 640));
+    var window = try sdl.Window.init("ZigMicroUI", 800, 600);
     defer window.deinit();
 
-    var renderer = try Renderer.init(&window);
+    var renderer = try sdl.Renderer.init(&window);
     defer renderer.deinit();
 
-    const theme = color.DebugHighContrast;
-    var draw_engine = DrawEngine.init(theme.background);
+    var render_engine = render.RenderEngine.init(&renderer);
+    const simple_style: style.Style = .{};
 
-    const rect = math.rect.Rect2(f32).init(
-        math.vec.Vec2(f32).init(0, 0),
-        math.vec.Vec2(f32).init(100, 100),
-    );
-
-    var isRunning = true;
-    while (isRunning) {
-        // Handle events
-        var event: sdl.SDL_Event = undefined;
-        while (sdl.SDL_PollEvent(&event)) {
-            switch (event.type) {
-                sdl.SDL_EVENT_QUIT => isRunning = false,
+    var is_running = true;
+    while (is_running) {
+        var e: csdl.SDL_Event = undefined;
+        while (csdl.SDL_PollEvent(&e)) {
+            switch (e.type) {
+                csdl.SDL_EVENT_QUIT => {
+                    is_running = false;
+                },
+                csdl.SDL_EVENT_MOUSE_MOTION => {
+                    mouse_pos.x = e.motion.x;
+                    mouse_pos.y = e.motion.y;
+                },
                 else => {},
             }
         }
+        tmp_id = root_id;
 
-        // Draw ui
-        draw_engine.reset();
-        draw_engine.push(.{ .FillRect = .{
-            .rect_draw = rect,
-            .color = theme.panel,
-        } }) catch {
-            isRunning = false;
+        const background_color = simple_style.background_color;
+        if (!renderer.clear(
+            background_color.r,
+            background_color.g,
+            background_color.b,
+            background_color.a,
+        )) {
+            is_running = false;
             continue;
-        };
-        draw_engine.push(.{ .Rect = .{
-            .rect_draw = rect,
-            .color = theme.text,
-        } }) catch {
-            isRunning = false;
-            continue;
-        };
+        }
 
-        // Render ui
-        draw_engine.render(&renderer) catch {
-            isRunning = false;
+        const window_rect = math.rect.Rect2(f32).init(100, 100, 600, 400);
+        try ui.drawFrame(
+            &render_engine,
+            window_rect,
+            simple_style.window_color,
+            simple_style.window_border_color,
+        );
+
+        var window_layout = ui.createRowLayout(5).init(window_rect, &.{ 20, 20, 20, -15, 15 });
+        {
+            const titlebar_rect = window_layout.next();
+            try ui.drawFrame(
+                &render_engine,
+                titlebar_rect,
+                simple_style.window_titlebar_color,
+                simple_style.window_titlebar_border_color,
+            );
+
+            var titlebar_layout = ui.createColumnLayout(3).init(titlebar_rect, &.{ 100, -20, 20 });
+            const titlebar_title_rect = titlebar_layout.next();
+            try ui.drawFrame(
+                &render_engine,
+                titlebar_title_rect,
+                simple_style.window_titlebar_title_color,
+                simple_style.window_titlebar_border_color,
+            );
+
+            _ = titlebar_layout.next();
+            const titlebar_close_rect = titlebar_layout.next();
+            try ui.drawFrame(
+                &render_engine,
+                titlebar_close_rect,
+                simple_style.button_color,
+                simple_style.window_titlebar_border_color,
+            );
+            ui.genSrcLineID(&tmp_id, @src());
+            if (titlebar_close_rect.contains(mouse_pos)) {
+                std.debug.print("Focus id {}\n", .{tmp_id});
+            }
+        }
+
+        {
+            const menu_rect = window_layout.next();
+            try ui.drawFrame(
+                &render_engine,
+                menu_rect,
+                simple_style.menu_color,
+                simple_style.menu_border_color,
+            );
+
+            var menu_layout = ui.createColumnLayout(5).init(menu_rect, &.{ 50, 50, 50, 50, 50 });
+            var count: usize = 0;
+            while (count < 5) : (count += 1) {
+                const menu_item_rect = menu_layout.next();
+                try ui.drawFrame(
+                    &render_engine,
+                    menu_item_rect,
+                    simple_style.menu_text_color,
+                    simple_style.menu_border_color,
+                );
+            }
+        }
+
+        {
+            const toolbar_rect = window_layout.next();
+            try ui.drawFrame(
+                &render_engine,
+                toolbar_rect,
+                simple_style.menu_color,
+                simple_style.menu_border_color,
+            );
+
+            var toolbar_layout = ui.createColumnLayout(6).init(toolbar_rect, &.{ 20, 20, 20, 20, 20, 20 });
+            var count: usize = 0;
+            while (count < 10) : (count += 1) {
+                const toolbar_item_rect = toolbar_layout.next();
+                try ui.drawFrame(
+                    &render_engine,
+                    toolbar_item_rect,
+                    simple_style.menu_text_color,
+                    simple_style.menu_border_color,
+                );
+            }
+        }
+
+        {
+            const body_rect = window_layout.next();
+            try ui.drawFrame(
+                &render_engine,
+                body_rect,
+                simple_style.window_body_color,
+                simple_style.window_body_border_color,
+            );
+
+            var body_layout = ui.createColumnLayout(2).init(body_rect, &.{ 200, 0 });
+            {
+                const body_left_rect = body_layout.next();
+                try ui.drawFrame(
+                    &render_engine,
+                    body_left_rect,
+                    simple_style.window_body_color,
+                    simple_style.window_body_border_color,
+                );
+            }
+
+            {
+                const body_right_rect = body_layout.next();
+                try ui.drawFrame(
+                    &render_engine,
+                    body_right_rect,
+                    simple_style.window_body_color,
+                    simple_style.window_body_border_color,
+                );
+            }
+        }
+
+        {
+            const statusbar_rect = window_layout.next();
+            try ui.drawFrame(
+                &render_engine,
+                statusbar_rect,
+                simple_style.window_statusbar_color,
+                simple_style.window_statusbar_border_color,
+            );
+
+            var statusbar_layout = ui.createColumnLayout(3).init(statusbar_rect, &.{ 100, -30, 30 });
+            const statusbar_title_rect = statusbar_layout.next();
+            try ui.drawFrame(
+                &render_engine,
+                statusbar_title_rect,
+                simple_style.window_statusbar_title_color,
+                simple_style.window_statusbar_border_color,
+            );
+
+            _ = statusbar_layout.next();
+            const statusbar_close_rect = statusbar_layout.next();
+            try ui.drawFrame(
+                &render_engine,
+                statusbar_close_rect,
+                simple_style.button_color,
+                simple_style.window_statusbar_border_color,
+            );
+        }
+
+        if (!renderer.present()) {
+            is_running = false;
             continue;
-        };
-        sdl.SDL_Delay(16);
+        }
+
+        csdl.SDL_Delay(16);
     }
-
-    return 0;
 }

@@ -261,7 +261,6 @@ mu_Rect mu_get_clip_rect(mu_Context* ctx);
 int mu_check_clip(mu_Context* ctx, mu_Rect r);
 mu_Container* mu_get_current_container(mu_Context* ctx);
 mu_Container* mu_get_container(mu_Context* ctx, const char* name);
-mu_Container* get_container(mu_Context* ctx, mu_Id id, int opt);
 void mu_bring_to_front(mu_Context* ctx, mu_Container* cnt);
 
 int mu_pool_init(mu_Context* ctx, mu_PoolItem* items, int len, mu_Id id);
@@ -335,19 +334,4 @@ void mu_end_popup(mu_Context* ctx);
 void mu_begin_panel_ex(mu_Context* ctx, const char* name, int opt);
 void mu_end_panel(mu_Context* ctx);
 
-void begin_root_container(mu_Context* ctx, mu_Container* cnt);
-void push_container_body(mu_Context* ctx, mu_Container* cnt, mu_Rect body,
-                         int opt);
-void end_root_container(mu_Context* ctx);
-void pop_container(mu_Context* ctx);
-mu_Layout* get_layout(mu_Context* ctx);
-void sample(mu_Context* ctx, const char* name, int opt);
-void push_container(mu_Context* ctx, mu_Container* cnt);
-void push_root(mu_Context* ctx, mu_Container* cnt);
-mu_Command* push_jump(mu_Context* ctx, mu_Command* dst);
-void mu_push_clip_root(mu_Context* ctx);
-void scrollbars(mu_Context* ctx, mu_Container* cnt, mu_Rect* body);
-void push_layout(mu_Context* ctx, mu_Rect body, mu_Vec2 scroll);
-
-static mu_Rect unclipped_rect = {0, 0, 0x1000000, 0x1000000};
 #endif

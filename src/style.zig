@@ -1,28 +1,34 @@
-const microui = @import("sdl.zig").microui;
+const color = @import("color.zig");
 
-pub const defaultStype: microui.mu_Style = .{
-    .font = null,
-    .size = .{ .x = 68, .y = 10 },
-    .padding = 5,
-    .spacing = 4,
-    .indent = 24,
-    .title_height = 24,
-    .scrollbar_size = 12,
-    .thumb_size = 8,
-    .colors = .{
-        .{ .r = 230, .g = 230, .b = 230, .a = 255 },
-        .{ .r = 25, .g = 25, .b = 25, .a = 255 },
-        .{ .r = 50, .g = 50, .b = 50, .a = 255 },
-        .{ .r = 25, .g = 25, .b = 25, .a = 255 },
-        .{ .r = 240, .g = 240, .b = 240, .a = 255 },
-        .{ .r = 0, .g = 0, .b = 0, .a = 0 },
-        .{ .r = 75, .g = 75, .b = 75, .a = 255 },
-        .{ .r = 95, .g = 95, .b = 95, .a = 255 },
-        .{ .r = 115, .g = 115, .b = 115, .a = 255 },
-        .{ .r = 30, .g = 30, .b = 30, .a = 255 },
-        .{ .r = 35, .g = 35, .b = 35, .a = 255 },
-        .{ .r = 40, .g = 40, .b = 40, .a = 255 },
-        .{ .r = 43, .g = 43, .b = 43, .a = 255 },
-        .{ .r = 30, .g = 30, .b = 30, .a = 255 },
-    },
+pub const Style = struct {
+    // Window
+    background_color: color.Color = color.Nord.background,
+    window_color: color.Color = color.DebugHighContrast.background,
+    window_border_color: color.Color = color.DebugHighContrast.border,
+
+    window_titlebar_size: f32 = 24,
+    window_titlebar_color: color.Color = color.DebugHighContrast.titlebar,
+    window_titlebar_border_color: color.Color = color.DebugHighContrast.border,
+
+    window_titlebar_title_color: color.Color = color.DebugHighContrast.text,
+
+    button_color: color.Color = color.DebugHighContrast.button,
+
+    window_body_color: color.Color = color.DebugHighContrast.background,
+    window_body_border_color: color.Color = color.DebugHighContrast.border,
+
+    window_statusbar_size: f32 = 24,
+    window_statusbar_color: color.Color = color.DebugHighContrast.panel,
+    window_statusbar_border_color: color.Color = color.DebugHighContrast.border,
+    window_statusbar_title_color: color.Color = color.DebugHighContrast.text,
+
+    // Menu
+    menu_size: f32 = 16,
+    menu_color: color.Color = color.DebugHighContrast.panel2,
+    menu_border_color: color.Color = color.DebugHighContrast.border,
+    menu_text_color: color.Color = color.DebugHighContrast.button,
+
+    // Text
+    text_color: color.Color = color.DebugHighContrast.text,
+    border_color: color.Color = color.DebugHighContrast.border,
 };
