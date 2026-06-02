@@ -31,4 +31,9 @@ pub const Style = struct {
     // Text
     text_color: color.Color = color.DebugHighContrast.text,
     border_color: color.Color = color.DebugHighContrast.border,
+
+    // Border
+    normal_border_color: color.Color = color.Nord.border,
+    hover_border_color: color.Color = color.DebugHighContrast.border,
+    focus_border_color: color.Color = color.DebugHighContrast.border,
 };

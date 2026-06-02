@@ -8,11 +8,8 @@ const ui = @import("ui.zig");
 const style = @import("style.zig");
 
 pub fn main() !void {
-    const root_id: ui.ID = ui.HASH_INITIAL;
-    std.debug.print("root: {d}\n", .{root_id});
-    var tmp_id: ui.ID = root_id;
-    var mouse_pos: math.vec.Vec2(f32) = undefined;
 
+    // Init SDL
     if (!csdl.SDL_Init(csdl.SDL_INIT_VIDEO)) {
         return error.SDLInitFailed;
     }
@@ -27,8 +24,23 @@ pub fn main() !void {
     var render_engine = render.RenderEngine.init(&renderer);
     const simple_style: style.Style = .{};
 
+    // Init state
     var is_running = true;
+    var last_mouse_pos: math.vec.Vec2(f32) = undefined;
+    var mouse_pos: math.vec.Vec2(f32) = undefined;
+    var is_mouse_down = false;
+
+    var id_logic = ui.IdLogic{};
+    // var hover_id: ?ui.ID = undefined;
+    // var mouse_down_id: ?ui.ID = null;
+    // var mouse_up_id: ?ui.ID = null;
+
+    var window_rect = math.rect.Rect2(f32).init(100, 100, 600, 400);
+
+    // Main loop
     while (is_running) {
+        // Handle SDL events
+        last_mouse_pos = mouse_pos;
         var e: csdl.SDL_Event = undefined;
         while (csdl.SDL_PollEvent(&e)) {
             switch (e.type) {
@@ -39,10 +51,21 @@ pub fn main() !void {
                     mouse_pos.x = e.motion.x;
                     mouse_pos.y = e.motion.y;
                 },
+                csdl.SDL_EVENT_MOUSE_BUTTON_DOWN => {
+                    is_mouse_down = true;
+                },
+                csdl.SDL_EVENT_MOUSE_BUTTON_UP => {
+                    is_mouse_down = false;
+                },
                 else => {},
             }
         }
-        tmp_id = root_id;
+
+        // Init id
+        var tmp_id = ui.HASH_INITIAL;
+        // hover_id = null;
+        id_logic.updateMouse(mouse_pos, is_mouse_down);
+        defer id_logic.resetMouseDown();
 
         const background_color = simple_style.background_color;
         if (!renderer.clear(
@@ -55,7 +78,6 @@ pub fn main() !void {
             continue;
         }
 
-        const window_rect = math.rect.Rect2(f32).init(100, 100, 600, 400);
         try ui.drawFrame(
             &render_engine,
             window_rect,
@@ -70,30 +92,40 @@ pub fn main() !void {
                 &render_engine,
                 titlebar_rect,
                 simple_style.window_titlebar_color,
-                simple_style.window_titlebar_border_color,
+                simple_style.normal_border_color,
             );
 
             var titlebar_layout = ui.createColumnLayout(3).init(titlebar_rect, &.{ 100, -20, 20 });
+
             const titlebar_title_rect = titlebar_layout.next();
             try ui.drawFrame(
                 &render_engine,
                 titlebar_title_rect,
                 simple_style.window_titlebar_title_color,
-                simple_style.window_titlebar_border_color,
+                simple_style.normal_border_color,
             );
 
-            _ = titlebar_layout.next();
+            const mover_rect = titlebar_layout.next();
+            ui.genSrcLineID(&tmp_id, @src());
+            if (id_logic.updateMouseDown(mover_rect, tmp_id)) {
+                const delta = math.vec.Vec2(f32).init(mouse_pos.x - last_mouse_pos.x, mouse_pos.y - last_mouse_pos.y);
+                window_rect.pos.selfAdd(delta);
+            }
+
             const titlebar_close_rect = titlebar_layout.next();
+            ui.genSrcLineID(&tmp_id, @src());
+            if (id_logic.updateMouseUp(titlebar_close_rect, tmp_id)) {
+                id_logic.resetMouseUp();
+                std.debug.print("mouse up\n", .{});
+            }
+
+            const border_color = if (id_logic.getIsHover(tmp_id)) simple_style.hover_border_color else simple_style.normal_border_color;
             try ui.drawFrame(
                 &render_engine,
                 titlebar_close_rect,
                 simple_style.button_color,
-                simple_style.window_titlebar_border_color,
+                border_color,
             );
-            ui.genSrcLineID(&tmp_id, @src());
-            if (titlebar_close_rect.contains(mouse_pos)) {
-                std.debug.print("Focus id {}\n", .{tmp_id});
-            }
         }
 
         {
