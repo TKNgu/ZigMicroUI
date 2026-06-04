@@ -15,6 +15,14 @@ pub fn drawFrame(
     try renderer.rect(rect, border_color);
 }
 
+pub fn drawFrawWithoutBorder(
+    renderer: *render.RenderEngine,
+    frame_rect: math.rect.Rect2(f32),
+    draw_color: color.Color,
+) !void {
+    try renderer.fillRect(frame_rect, draw_color);
+}
+
 // Layout
 pub fn createArrayLayout(comptime N: usize) type {
     return struct {
