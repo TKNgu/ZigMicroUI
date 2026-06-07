@@ -6,6 +6,7 @@ const math = @import("math.zig");
 const color = @import("color.zig");
 const ui = @import("ui.zig");
 const style = @import("style.zig");
+const atlas = @import("atlas.zig");
 
 pub fn demoview(
     render_engine: *render.RenderEngine,
@@ -171,7 +172,7 @@ pub fn demoview(
     }
 }
 
-pub fn main() !void {
+pub fn main(init: std.process.Init) !void {
     // Init SDL
     if (!csdl.SDL_Init(csdl.SDL_INIT_VIDEO)) {
         return error.SDLInitFailed;
@@ -185,7 +186,10 @@ pub fn main() !void {
     defer renderer.deinit();
 
     // UI
-    var render_engine = render.RenderEngine.init(&renderer);
+    var render_engine = try render.RenderEngine.init(&renderer, init.arena.allocator());
+    defer render_engine.deinit();
+
+    // Style
     const simple_style: style.Style = .{};
 
     // Init state
@@ -223,10 +227,25 @@ pub fn main() !void {
             continue;
         }
 
+        render_engine.drawTextureTest() catch {
+            is_running = false;
+            continue;
+        };
+
         ui.drawFrame(
             &render_engine,
             math.rect.Rect2(f32).init(100, 100, 600, 400),
             simple_style.color_windowbg,
+            simple_style.color_border,
+        ) catch {
+            is_running = false;
+            continue;
+        };
+
+        ui.drawFrame(
+            &render_engine,
+            math.rect.Rect2(f32).init(100, 100, 600, 20),
+            simple_style.color_titlebg,
             simple_style.color_border,
         ) catch {
             is_running = false;
