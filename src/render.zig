@@ -1,17 +1,36 @@
 const std = @import("std");
 const math = @import("math.zig");
 const sdl = @import("sdl.zig");
-const csdl = sdl.csdl;
+// const csdl = sdl.csdl;
 const color = @import("color.zig");
 const atlas = @import("atlas.zig");
+const csdl = @import("csdl");
 
 pub const RenderEngine = struct {
     renderer: *sdl.Renderer,
+    font_ui: sdl.Font,
+    font_color: color.Color,
+    font_atlas: atlas.FontAtlas,
 
-    pub fn init(renderer: *sdl.Renderer) !RenderEngine {
+    pub fn init(
+        renderer: *sdl.Renderer,
+        font_path: [:0]const u8,
+        size: f32,
+        font_color: color.Color,
+    ) !RenderEngine {
+        var font_ui = try sdl.Font.init(font_path, size);
+        const font_atlas = try atlas.FontAtlas.init(&font_ui, font_color, renderer);
         return .{
             .renderer = renderer,
+            .font_ui = font_ui,
+            .font_color = font_color,
+            .font_atlas = font_atlas,
         };
+    }
+
+    pub fn deinit(self: *RenderEngine) void {
+        self.font_ui.deinit();
+        self.font_atlas.deinit();
     }
 
     fn loadTexture(
@@ -151,25 +170,16 @@ pub const RenderEngine = struct {
         }
     }
 
-    pub fn drawText(
-        self: *RenderEngine,
-        start_location: math.vec.Vec2(f32),
-        table: []const math.rect.Rect2(f32),
-        text: []const u8,
-    ) !void {
-        var char_location = start_location;
-        for (text) |c| {
-            const text_rect = table[c];
-            try self.drawTexture(
-                text_rect,
-                math.rect.Rect2(f32).init(
-                    char_location.x,
-                    char_location.y,
-                    text_rect.getWidth(),
-                    text_rect.getHeight(),
-                ),
-            );
-            char_location.x += text_rect.getWidth();
-        }
+    pub fn drawText(self: *RenderEngine, text: [:0]const u8, location: math.vec.Vec2(f32)) !void {
+        var tmp = try self.font_ui.renderTextTexture(text, self.font_color, self.renderer);
+        defer tmp.texture.deinit();
+        const text_size = tmp.size;
+        try tmp.texture.render(self.renderer, null, math.rect.Rect2(f32).initVec(
+            math.vec.Vec2(f32).init(location.x, location.y),
+            math.vec.Vec2(f32).init(
+                @floatFromInt(text_size.x),
+                @floatFromInt(text_size.y),
+            ),
+        ));
     }
 };
