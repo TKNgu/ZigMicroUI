@@ -1,6 +1,6 @@
 const std = @import("std");
 const sdl = @import("sdl.zig");
-const csdl = sdl.csdl;
+const csdl = @import("csdl");
 const render = @import("render.zig");
 const math = @import("math.zig");
 const color = @import("color.zig");
@@ -172,12 +172,32 @@ pub fn demoview(
     }
 }
 
-pub fn main(init: std.process.Init) !void {
+const TextManager = struct {
+    font: *csdl.TTF_Font,
+    textures: [256]*csdl.SDL_Texture = undefined,
+
+    pub fn init(font: *csdl.TTF_Font) TextManager {
+        return .{
+            .font = font,
+        };
+    }
+};
+
+pub fn main() !void {
     // Init SDL
     if (!csdl.SDL_Init(csdl.SDL_INIT_VIDEO)) {
+        const error_log = csdl.SDL_GetError();
+        std.debug.print("SDL_Init failed: {s}\n", .{error_log});
         return error.SDLInitFailed;
     }
     defer csdl.SDL_Quit();
+
+    if (!csdl.TTF_Init()) {
+        const error_log = csdl.SDL_GetError();
+        std.debug.print("TTF_Init failed: {s}\n", .{error_log});
+        return error.TTFInitFailed;
+    }
+    defer csdl.TTF_Quit();
 
     var window = try sdl.Window.init("ZigMicroUI", 800, 600);
     defer window.deinit();
@@ -185,39 +205,60 @@ pub fn main(init: std.process.Init) !void {
     var renderer = try sdl.Renderer.init(&window);
     defer renderer.deinit();
 
-    // UI
-    var render_engine = try render.RenderEngine.init(&renderer, init.arena.allocator());
-    defer render_engine.deinit();
+    var ui_font = try sdl.Font.init("data/JetBrainsMono-Bold.ttf", 16);
+    defer ui_font.deinit();
 
     // Style
     const simple_style: style.Style = .{};
 
-    // Init state
+    var font_atlas = try atlas.FontAtlas.init(&ui_font, simple_style.text_color, &renderer);
+    defer font_atlas.deinit();
+
+    const info = try ui_font.renderTextTexture("Hello World!", simple_style.text_color, &renderer);
+    const text_texture_size = info.size;
+    var text_texture = info.texture;
+    defer text_texture.deinit();
+
+    // // UI
+    // var render_engine = try render.RenderEngine.init(&renderer);
+
+    // // Init state
     var is_running = true;
-    var last_mouse_pos: math.vec.Vec2(f32) = undefined;
-    var mouse_pos: math.vec.Vec2(f32) = undefined;
-    var is_mouse_down = false;
+    // var last_mouse_pos: math.vec.Vec2(f32) = undefined;
+    // var mouse_pos: math.vec.Vec2(f32) = undefined;
+    // var is_mouse_down = false;
+
+    // // Sample text
+    // const text_surface = try ui_font.renderText("Hello World!", simple_style.text_color);
+    // defer csdl.SDL_DestroySurface(text_surface);
+    // const text_texture = csdl.SDL_CreateTextureFromSurface(renderer.renderer, text_surface);
+    // if (text_texture == null) {
+    //     const error_log = csdl.SDL_GetError();
+    //     std.debug.print("SDL_CreateTextureFromSurface failed: {s}\n", .{error_log});
+    //     return error.SDLCreateTextureFromSurfaceFailed;
+    // }
+    // defer csdl.SDL_DestroyTexture(text_texture);
 
     // Main loop
     while (is_running) {
         // Handle SDL events
-        last_mouse_pos = mouse_pos;
+        // last_mouse_pos = mouse_pos;
         var e: csdl.SDL_Event = undefined;
         while (csdl.SDL_PollEvent(&e)) {
             switch (e.type) {
                 csdl.SDL_EVENT_QUIT => {
                     is_running = false;
                 },
-                csdl.SDL_EVENT_MOUSE_MOTION => {
-                    mouse_pos.x = e.motion.x;
-                    mouse_pos.y = e.motion.y;
-                },
-                csdl.SDL_EVENT_MOUSE_BUTTON_DOWN => {
-                    is_mouse_down = true;
-                },
-                csdl.SDL_EVENT_MOUSE_BUTTON_UP => {
-                    is_mouse_down = false;
-                },
+                // csdl.SDL_EVENT_MOUSE_MOTION => {
+                //     mouse_pos.x = e.motion.x;
+                //     mouse_pos.y = e.motion.y;
+                // },
+                // csdl.SDL_EVENT_MOUSE_BUTTON_DOWN => {
+                //     is_mouse_down = true;
+                // },
+                // csdl.SDL_EVENT_MOUSE_BUTTON_UP => {
+                //     is_mouse_down = false;
+                // },
                 else => {},
             }
         }
@@ -227,30 +268,83 @@ pub fn main(init: std.process.Init) !void {
             continue;
         }
 
-        render_engine.drawTextureTest() catch {
+        const dst_rect = math.rect.Rect2(f32).init(
+            100,
+            100,
+            @floatFromInt(text_texture_size.x),
+            @floatFromInt(text_texture_size.y),
+        );
+        text_texture.render(&renderer, null, dst_rect) catch {
             is_running = false;
             continue;
         };
 
-        ui.drawFrame(
-            &render_engine,
-            math.rect.Rect2(f32).init(100, 100, 600, 400),
-            simple_style.color_windowbg,
-            simple_style.color_border,
-        ) catch {
+        font_atlas.atlas_texture.render(&renderer, null, null) catch {
             is_running = false;
             continue;
         };
 
-        ui.drawFrame(
-            &render_engine,
-            math.rect.Rect2(f32).init(100, 100, 600, 20),
-            simple_style.color_titlebg,
-            simple_style.color_border,
-        ) catch {
+        const location = math.vec.Vec2(f32).init(10, 10);
+        font_atlas.renderChar(&renderer, 'C', location) catch {
             is_running = false;
             continue;
         };
+
+        var tmp = ui_font.renderTextTexture("Hello World!", simple_style.text_color, &renderer) catch {
+            is_running = false;
+            continue;
+        };
+        defer tmp.texture.deinit();
+
+        const text_size = tmp.size;
+        tmp.texture.render(&renderer, null, math.rect.Rect2(f32).initVec(
+            math.vec.Vec2(f32).init(10, 10),
+            math.vec.Vec2(f32).init(
+                @floatFromInt(text_size.x),
+                @floatFromInt(text_size.y),
+            ),
+        )) catch {
+            is_running = false;
+            continue;
+        };
+
+        // try render_engine.drawTexture(text_texture, null, null);
+        //
+        // ui.drawFrame(
+        //     &render_engine,
+        //     math.rect.Rect2(f32).init(100, 100, 600, 400),
+        //     simple_style.color_windowbg,
+        //     simple_style.color_border,
+        // ) catch {
+        //     is_running = false;
+        //     continue;
+        // };
+        //
+        // ui.drawFrame(
+        //     &render_engine,
+        //     math.rect.Rect2(f32).init(100, 100, 600, 20),
+        //     simple_style.color_titlebg,
+        //     simple_style.color_border,
+        // ) catch {
+        //     is_running = false;
+        //     continue;
+        // };
+        //
+        // var start_location = math.vec.Vec2(f32).init(10, 10);
+        // var max_height: f32 = 0;
+        //
+        // for (32..128) |c| {
+        //     const sample_rect = atlas.ATLAS_FONT[c];
+        //     const dst_rect = math.rect.Rect2(f32).init(start_location.x, start_location.y, sample_rect.getWidth() * 2, sample_rect.getHeight() * 2);
+        //
+        //     start_location.x += dst_rect.getWidth() + 1;
+        //     max_height = if (max_height < dst_rect.getHeight()) dst_rect.getHeight() else max_height;
+        //
+        //     if (start_location.x > 500) {
+        //         start_location.x = 10;
+        //         start_location.y += max_height + 1;
+        //     }
+        // }
 
         if (!renderer.present()) {
             is_running = false;

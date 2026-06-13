@@ -1,3 +1,9 @@
+const std = @import("std");
+const math = @import("math.zig");
+const color = @import("color.zig");
+const csdl = @import("csdl");
+const sdl = @import("sdl.zig");
+
 pub const MU_ICON_MAX: usize = 5;
 pub const ATLAS_WHITE: usize = MU_ICON_MAX;
 pub const ATLAS_WIDTH: usize = 128;
@@ -892,108 +898,251 @@ pub const ATLAS_TEXTURE: [ATLAS_WIDTH * ATLAS_HEIGHT]u8 = .{
     0x00, 0x00, 0x00, 0x00,
 };
 
-//
-// static mu_Rect atlas[] = {
-//   [ MU_ICON_CLOSE ] = { 88, 68, 16, 16 },
-//   [ MU_ICON_CHECK ] = { 0, 0, 18, 18 },
-//   [ MU_ICON_EXPANDED ] = { 118, 68, 7, 5 },
-//   [ MU_ICON_COLLAPSED ] = { 113, 68, 5, 7 },
-//   [ ATLAS_WHITE ] = { 125, 68, 3, 3 },
-//   [ ATLAS_FONT+32 ] = { 84, 68, 2, 17 },
-//   [ ATLAS_FONT+33 ] = { 39, 68, 3, 17 },
-//   [ ATLAS_FONT+34 ] = { 114, 51, 5, 17 },
-//   [ ATLAS_FONT+35 ] = { 34, 17, 7, 17 },
-//   [ ATLAS_FONT+36 ] = { 28, 34, 6, 17 },
-//   [ ATLAS_FONT+37 ] = { 58, 0, 9, 17 },
-//   [ ATLAS_FONT+38 ] = { 103, 0, 8, 17 },
-//   [ ATLAS_FONT+39 ] = { 86, 68, 2, 17 },
-//   [ ATLAS_FONT+40 ] = { 42, 68, 3, 17 },
-//   [ ATLAS_FONT+41 ] = { 45, 68, 3, 17 },
-//   [ ATLAS_FONT+42 ] = { 34, 34, 6, 17 },
-//   [ ATLAS_FONT+43 ] = { 40, 34, 6, 17 },
-//   [ ATLAS_FONT+44 ] = { 48, 68, 3, 17 },
-//   [ ATLAS_FONT+45 ] = { 51, 68, 3, 17 },
-//   [ ATLAS_FONT+46 ] = { 54, 68, 3, 17 },
-//   [ ATLAS_FONT+47 ] = { 124, 34, 4, 17 },
-//   [ ATLAS_FONT+48 ] = { 46, 34, 6, 17 },
-//   [ ATLAS_FONT+49 ] = { 52, 34, 6, 17 },
-//   [ ATLAS_FONT+50 ] = { 58, 34, 6, 17 },
-//   [ ATLAS_FONT+51 ] = { 64, 34, 6, 17 },
-//   [ ATLAS_FONT+52 ] = { 70, 34, 6, 17 },
-//   [ ATLAS_FONT+53 ] = { 76, 34, 6, 17 },
-//   [ ATLAS_FONT+54 ] = { 82, 34, 6, 17 },
-//   [ ATLAS_FONT+55 ] = { 88, 34, 6, 17 },
-//   [ ATLAS_FONT+56 ] = { 94, 34, 6, 17 },
-//   [ ATLAS_FONT+57 ] = { 100, 34, 6, 17 },
-//   [ ATLAS_FONT+58 ] = { 57, 68, 3, 17 },
-//   [ ATLAS_FONT+59 ] = { 60, 68, 3, 17 },
-//   [ ATLAS_FONT+60 ] = { 106, 34, 6, 17 },
-//   [ ATLAS_FONT+61 ] = { 112, 34, 6, 17 },
-//   [ ATLAS_FONT+62 ] = { 118, 34, 6, 17 },
-//   [ ATLAS_FONT+63 ] = { 119, 51, 5, 17 },
-//   [ ATLAS_FONT+64 ] = { 18, 0, 10, 17 },
-//   [ ATLAS_FONT+65 ] = { 41, 17, 7, 17 },
-//   [ ATLAS_FONT+66 ] = { 48, 17, 7, 17 },
-//   [ ATLAS_FONT+67 ] = { 55, 17, 7, 17 },
-//   [ ATLAS_FONT+68 ] = { 111, 0, 8, 17 },
-//   [ ATLAS_FONT+69 ] = { 0, 35, 6, 17 },
-//   [ ATLAS_FONT+70 ] = { 6, 35, 6, 17 },
-//   [ ATLAS_FONT+71 ] = { 119, 0, 8, 17 },
-//   [ ATLAS_FONT+72 ] = { 18, 17, 8, 17 },
-//   [ ATLAS_FONT+73 ] = { 63, 68, 3, 17 },
-//   [ ATLAS_FONT+74 ] = { 66, 68, 3, 17 },
-//   [ ATLAS_FONT+75 ] = { 62, 17, 7, 17 },
-//   [ ATLAS_FONT+76 ] = { 12, 51, 6, 17 },
-//   [ ATLAS_FONT+77 ] = { 28, 0, 10, 17 },
-//   [ ATLAS_FONT+78 ] = { 67, 0, 9, 17 },
-//   [ ATLAS_FONT+79 ] = { 76, 0, 9, 17 },
-//   [ ATLAS_FONT+80 ] = { 69, 17, 7, 17 },
-//   [ ATLAS_FONT+81 ] = { 85, 0, 9, 17 },
-//   [ ATLAS_FONT+82 ] = { 76, 17, 7, 17 },
-//   [ ATLAS_FONT+83 ] = { 18, 51, 6, 17 },
-//   [ ATLAS_FONT+84 ] = { 24, 51, 6, 17 },
-//   [ ATLAS_FONT+85 ] = { 26, 17, 8, 17 },
-//   [ ATLAS_FONT+86 ] = { 83, 17, 7, 17 },
-//   [ ATLAS_FONT+87 ] = { 38, 0, 10, 17 },
-//   [ ATLAS_FONT+88 ] = { 90, 17, 7, 17 },
-//   [ ATLAS_FONT+89 ] = { 30, 51, 6, 17 },
-//   [ ATLAS_FONT+90 ] = { 36, 51, 6, 17 },
-//   [ ATLAS_FONT+91 ] = { 69, 68, 3, 17 },
-//   [ ATLAS_FONT+92 ] = { 124, 51, 4, 17 },
-//   [ ATLAS_FONT+93 ] = { 72, 68, 3, 17 },
-//   [ ATLAS_FONT+94 ] = { 42, 51, 6, 17 },
-//   [ ATLAS_FONT+95 ] = { 15, 68, 4, 17 },
-//   [ ATLAS_FONT+96 ] = { 48, 51, 6, 17 },
-//   [ ATLAS_FONT+97 ] = { 54, 51, 6, 17 },
-//   [ ATLAS_FONT+98 ] = { 97, 17, 7, 17 },
-//   [ ATLAS_FONT+99 ] = { 0, 52, 5, 17 },
-//   [ ATLAS_FONT+100 ] = { 104, 17, 7, 17 },
-//   [ ATLAS_FONT+101 ] = { 60, 51, 6, 17 },
-//   [ ATLAS_FONT+102 ] = { 19, 68, 4, 17 },
-//   [ ATLAS_FONT+103 ] = { 66, 51, 6, 17 },
-//   [ ATLAS_FONT+104 ] = { 111, 17, 7, 17 },
-//   [ ATLAS_FONT+105 ] = { 75, 68, 3, 17 },
-//   [ ATLAS_FONT+106 ] = { 78, 68, 3, 17 },
-//   [ ATLAS_FONT+107 ] = { 72, 51, 6, 17 },
-//   [ ATLAS_FONT+108 ] = { 81, 68, 3, 17 },
-//   [ ATLAS_FONT+109 ] = { 48, 0, 10, 17 },
-//   [ ATLAS_FONT+110 ] = { 118, 17, 7, 17 },
-//   [ ATLAS_FONT+111 ] = { 0, 18, 7, 17 },
-//   [ ATLAS_FONT+112 ] = { 7, 18, 7, 17 },
-//   [ ATLAS_FONT+113 ] = { 14, 34, 7, 17 },
-//   [ ATLAS_FONT+114 ] = { 23, 68, 4, 17 },
-//   [ ATLAS_FONT+115 ] = { 5, 52, 5, 17 },
-//   [ ATLAS_FONT+116 ] = { 27, 68, 4, 17 },
-//   [ ATLAS_FONT+117 ] = { 21, 34, 7, 17 },
-//   [ ATLAS_FONT+118 ] = { 78, 51, 6, 17 },
-//   [ ATLAS_FONT+119 ] = { 94, 0, 9, 17 },
-//   [ ATLAS_FONT+120 ] = { 84, 51, 6, 17 },
-//   [ ATLAS_FONT+121 ] = { 90, 51, 6, 17 },
-//   [ ATLAS_FONT+122 ] = { 10, 68, 5, 17 },
-//   [ ATLAS_FONT+123 ] = { 31, 68, 4, 17 },
-//   [ ATLAS_FONT+124 ] = { 96, 51, 6, 17 },
-//   [ ATLAS_FONT+125 ] = { 35, 68, 4, 17 },
-//   [ ATLAS_FONT+126 ] = { 102, 51, 6, 17 },
-//   [ ATLAS_FONT+127 ] = { 108, 51, 6, 17 },
-// };
-//
+pub fn getBitmap(allocator: std.mem.Allocator) ![]u8 {
+    const bitmap = try allocator.alloc(u8, ATLAS_WIDTH * ATLAS_HEIGHT * 3);
+    for (0..ATLAS_WIDTH) |x| {
+        for (0..ATLAS_HEIGHT) |y| {
+            const index = y * ATLAS_WIDTH + x;
+            const value = ATLAS_TEXTURE[index];
+            if (value != 0) {
+                bitmap[index * 3 + 0] = 255;
+                bitmap[index * 3 + 1] = 0;
+                bitmap[index * 3 + 2] = 0;
+            } else {
+                bitmap[index * 3 + 0] = 0;
+                bitmap[index * 3 + 1] = 0;
+                bitmap[index * 3 + 2] = 0;
+            }
+        }
+    }
+
+    return bitmap;
+}
+
+pub const ICON = struct {
+    pub const CLOSE = math.rect.Rect2(f32).init(88, 68, 16, 16);
+    pub const CHECK = math.rect.Rect2(f32).init(0, 0, 18, 18);
+    pub const EXPANDED = math.rect.Rect2(f32).init(118, 68, 7, 5);
+    pub const COLLAPSED = math.rect.Rect2(f32).init(113, 68, 5, 7);
+    pub const WHITE = math.rect.Rect2(f32).init(125, 68, 3, 3);
+};
+
+pub const ATLAS_FONT: [128]math.rect.Rect2(f32) = TABLE: {
+    var table: [128]math.rect.Rect2(f32) = undefined;
+
+    table[32] = math.rect.Rect2(f32).init(84, 68, 2, 17);
+    table[33] = math.rect.Rect2(f32).init(39, 68, 3, 17);
+    table[34] = math.rect.Rect2(f32).init(114, 51, 5, 17);
+    table[35] = math.rect.Rect2(f32).init(34, 17, 7, 17);
+    table[36] = math.rect.Rect2(f32).init(28, 34, 6, 17);
+    table[37] = math.rect.Rect2(f32).init(58, 0, 9, 17);
+    table[38] = math.rect.Rect2(f32).init(103, 0, 8, 17);
+    table[39] = math.rect.Rect2(f32).init(86, 68, 2, 17);
+    table[40] = math.rect.Rect2(f32).init(42, 68, 3, 17);
+    table[41] = math.rect.Rect2(f32).init(45, 68, 3, 17);
+    table[42] = math.rect.Rect2(f32).init(34, 34, 6, 17);
+    table[43] = math.rect.Rect2(f32).init(40, 34, 6, 17);
+    table[44] = math.rect.Rect2(f32).init(48, 68, 3, 17);
+    table[45] = math.rect.Rect2(f32).init(51, 68, 3, 17);
+    table[46] = math.rect.Rect2(f32).init(54, 68, 3, 17);
+    table[47] = math.rect.Rect2(f32).init(124, 34, 4, 17);
+    table[48] = math.rect.Rect2(f32).init(46, 34, 6, 17);
+    table[49] = math.rect.Rect2(f32).init(52, 34, 6, 17);
+    table[50] = math.rect.Rect2(f32).init(58, 34, 6, 17);
+    table[51] = math.rect.Rect2(f32).init(64, 34, 6, 17);
+    table[52] = math.rect.Rect2(f32).init(70, 34, 6, 17);
+    table[53] = math.rect.Rect2(f32).init(76, 34, 6, 17);
+    table[54] = math.rect.Rect2(f32).init(82, 34, 6, 17);
+    table[55] = math.rect.Rect2(f32).init(88, 34, 6, 17);
+    table[56] = math.rect.Rect2(f32).init(94, 34, 6, 17);
+    table[57] = math.rect.Rect2(f32).init(100, 34, 6, 17);
+    table[58] = math.rect.Rect2(f32).init(57, 68, 3, 17);
+    table[59] = math.rect.Rect2(f32).init(60, 68, 3, 17);
+    table[60] = math.rect.Rect2(f32).init(106, 34, 6, 17);
+    table[61] = math.rect.Rect2(f32).init(112, 34, 6, 17);
+    table[62] = math.rect.Rect2(f32).init(118, 34, 6, 17);
+    table[63] = math.rect.Rect2(f32).init(119, 51, 5, 17);
+    table[64] = math.rect.Rect2(f32).init(18, 0, 10, 17);
+    table[65] = math.rect.Rect2(f32).init(41, 17, 7, 17);
+    table[66] = math.rect.Rect2(f32).init(48, 17, 7, 17);
+    table[67] = math.rect.Rect2(f32).init(55, 17, 7, 17);
+    table[68] = math.rect.Rect2(f32).init(111, 0, 8, 17);
+    table[69] = math.rect.Rect2(f32).init(0, 35, 6, 17);
+    table[70] = math.rect.Rect2(f32).init(6, 35, 6, 17);
+    table[71] = math.rect.Rect2(f32).init(119, 0, 8, 17);
+    table[72] = math.rect.Rect2(f32).init(18, 17, 8, 17);
+    table[73] = math.rect.Rect2(f32).init(63, 68, 3, 17);
+    table[74] = math.rect.Rect2(f32).init(66, 68, 3, 17);
+    table[75] = math.rect.Rect2(f32).init(62, 17, 7, 17);
+    table[76] = math.rect.Rect2(f32).init(12, 51, 6, 17);
+    table[77] = math.rect.Rect2(f32).init(28, 0, 10, 17);
+    table[78] = math.rect.Rect2(f32).init(67, 0, 9, 17);
+    table[79] = math.rect.Rect2(f32).init(76, 0, 9, 17);
+    table[80] = math.rect.Rect2(f32).init(69, 17, 7, 17);
+    table[81] = math.rect.Rect2(f32).init(85, 0, 9, 17);
+    table[82] = math.rect.Rect2(f32).init(76, 17, 7, 17);
+    table[83] = math.rect.Rect2(f32).init(18, 51, 6, 17);
+    table[84] = math.rect.Rect2(f32).init(24, 51, 6, 17);
+    table[85] = math.rect.Rect2(f32).init(26, 17, 8, 17);
+    table[86] = math.rect.Rect2(f32).init(83, 17, 7, 17);
+    table[87] = math.rect.Rect2(f32).init(38, 0, 10, 17);
+    table[88] = math.rect.Rect2(f32).init(90, 17, 7, 17);
+    table[89] = math.rect.Rect2(f32).init(30, 51, 6, 17);
+    table[90] = math.rect.Rect2(f32).init(36, 51, 6, 17);
+    table[91] = math.rect.Rect2(f32).init(69, 68, 3, 17);
+    table[92] = math.rect.Rect2(f32).init(124, 51, 4, 17);
+    table[93] = math.rect.Rect2(f32).init(72, 68, 3, 17);
+    table[94] = math.rect.Rect2(f32).init(42, 51, 6, 17);
+    table[95] = math.rect.Rect2(f32).init(15, 68, 4, 17);
+    table[96] = math.rect.Rect2(f32).init(48, 51, 6, 17);
+    table[97] = math.rect.Rect2(f32).init(54, 51, 6, 17);
+    table[98] = math.rect.Rect2(f32).init(97, 17, 7, 17);
+    table[99] = math.rect.Rect2(f32).init(0, 52, 5, 17);
+    table[100] = math.rect.Rect2(f32).init(104, 17, 7, 17);
+    table[101] = math.rect.Rect2(f32).init(60, 51, 6, 17);
+    table[102] = math.rect.Rect2(f32).init(19, 68, 4, 17);
+    table[103] = math.rect.Rect2(f32).init(66, 51, 6, 17);
+    table[104] = math.rect.Rect2(f32).init(111, 17, 7, 17);
+    table[105] = math.rect.Rect2(f32).init(75, 68, 3, 17);
+    table[106] = math.rect.Rect2(f32).init(78, 68, 3, 17);
+    table[107] = math.rect.Rect2(f32).init(72, 51, 6, 17);
+    table[108] = math.rect.Rect2(f32).init(81, 68, 3, 17);
+    table[109] = math.rect.Rect2(f32).init(48, 0, 10, 17);
+    table[110] = math.rect.Rect2(f32).init(118, 17, 7, 17);
+    table[111] = math.rect.Rect2(f32).init(0, 18, 7, 17);
+    table[112] = math.rect.Rect2(f32).init(7, 18, 7, 17);
+    table[113] = math.rect.Rect2(f32).init(14, 34, 7, 17);
+    table[114] = math.rect.Rect2(f32).init(23, 68, 4, 17);
+    table[115] = math.rect.Rect2(f32).init(5, 52, 5, 17);
+    table[116] = math.rect.Rect2(f32).init(27, 68, 4, 17);
+    table[117] = math.rect.Rect2(f32).init(21, 34, 7, 17);
+    table[118] = math.rect.Rect2(f32).init(78, 51, 6, 17);
+    table[119] = math.rect.Rect2(f32).init(94, 0, 9, 17);
+    table[120] = math.rect.Rect2(f32).init(84, 51, 6, 17);
+    table[121] = math.rect.Rect2(f32).init(90, 51, 6, 17);
+    table[122] = math.rect.Rect2(f32).init(10, 68, 5, 17);
+    table[123] = math.rect.Rect2(f32).init(31, 68, 4, 17);
+    table[124] = math.rect.Rect2(f32).init(96, 51, 6, 17);
+    table[125] = math.rect.Rect2(f32).init(35, 68, 4, 17);
+    table[126] = math.rect.Rect2(f32).init(102, 51, 6, 17);
+    table[127] = math.rect.Rect2(f32).init(108, 51, 6, 17);
+
+    break :TABLE table;
+};
+
+pub const FontAtlas = struct {
+    const BEGIN: u8 = 0x20;
+    const END: u8 = 0x7F;
+    text_color: color.Color,
+    atlas_texture: sdl.Texture,
+    atlas_rects: [END + 1]math.rect.Rect2(f32),
+
+    pub fn init(font: *sdl.Font, text_color: color.Color, renderer: *sdl.Renderer) !FontAtlas {
+        var texture_area: c_int = 0;
+        var max_size: math.vec.Vec2(c_int) = .{ .x = 0, .y = 0 };
+        var surfaces = comptime SURFACES: {
+            var surfaces: [END - BEGIN][*c]csdl.SDL_Surface = undefined;
+            for (&surfaces) |*surface| {
+                surface.* = null;
+            }
+            break :SURFACES surfaces;
+        };
+
+        for (BEGIN..END) |c| {
+            const text: [1:0]u8 = .{@intCast(c)};
+            const char_surface = font.renderTextSurface(&text, text_color) catch |err| {
+                for (surfaces[0 .. c - END]) |surface| {
+                    csdl.SDL_DestroySurface(surface);
+                }
+                return err;
+            };
+
+            texture_area += char_surface.*.w * char_surface.*.h;
+            if (char_surface.*.w > max_size.x) {
+                max_size.x = char_surface.*.w;
+            }
+            if (char_surface.*.h > max_size.y) {
+                max_size.y = char_surface.*.h;
+            }
+            surfaces[c - BEGIN] = char_surface;
+        }
+        defer {
+            for (surfaces) |surface| {
+                csdl.SDL_DestroySurface(surface);
+            }
+        }
+
+        const size: i32 = @intFromFloat(std.math.sqrt(@as(f32, @floatFromInt(texture_area))));
+        const size_width = size + max_size.x;
+        const size_height = size + max_size.y;
+        const atlas_surface = csdl.SDL_CreateSurface(size_width, size_height, csdl.SDL_PIXELFORMAT_RGBA8888);
+        if (atlas_surface == null) {
+            return error.SDLCreateSurfaceFailed;
+        }
+        defer csdl.SDL_DestroySurface(atlas_surface);
+
+        var offset: math.vec.Vec2(i32) = .{ .x = 0, .y = 0 };
+        var atlas_rects: [END + 1]math.rect.Rect2(f32) = undefined;
+        var index = BEGIN;
+        for (surfaces) |src_surface| {
+            const dst_rect: csdl.SDL_Rect = .{
+                .x = offset.x,
+                .y = offset.y,
+                .w = src_surface.*.w,
+                .h = src_surface.*.h,
+            };
+            if (!csdl.SDL_BlitSurface(src_surface, null, atlas_surface, &dst_rect)) {
+                return error.SDLBlitSurfaceFailed;
+            }
+            offset.x += src_surface.*.w;
+            if (offset.x + max_size.x > size_width) {
+                offset.x = 0;
+                offset.y += src_surface.*.h;
+            }
+            index += 1;
+            atlas_rects[index] = math.rect.Rect2(f32).initVec(
+                math.vec.Vec2(f32).init(
+                    @floatFromInt(offset.x),
+                    @floatFromInt(offset.y),
+                ),
+                math.vec.Vec2(f32).init(
+                    @floatFromInt(src_surface.*.w),
+                    @floatFromInt(src_surface.*.h),
+                ),
+            );
+        }
+
+        const atlas_texture = sdl.Texture.init_from_surface(atlas_surface, renderer) catch |err| {
+            csdl.SDL_DestroySurface(atlas_surface);
+            return err;
+        };
+        return .{
+            .text_color = text_color,
+            .atlas_texture = atlas_texture,
+            .atlas_rects = atlas_rects,
+        };
+    }
+
+    pub fn deinit(self: *FontAtlas) void {
+        self.atlas_texture.deinit();
+    }
+
+    pub fn renderChar(self: *FontAtlas, renderer: *sdl.Renderer, char: u8, dst_location: ?math.vec.Vec2(f32)) !void {
+        if (char < BEGIN or char > END) {
+            return error.InvalidChar;
+        }
+        const src_rect = self.atlas_rects[char];
+        const dst_rect = if (dst_location) |dst| RECT: {
+            const dst_rect = math.rect.Rect2(f32).initVec(dst, src_rect.size);
+            break :RECT dst_rect;
+        } else null;
+        try self.atlas_texture.render(renderer, src_rect, dst_rect);
+    }
+
+    pub fn getCharSize(self: *FontAtlas, char: u8) !math.vec.Vec2(f32) {
+        if (char < BEGIN or char > END) {
+            return error.InvalidChar;
+        }
+        return self.atlas_rects[char].size;
+    }
+};

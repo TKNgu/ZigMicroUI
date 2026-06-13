@@ -7,49 +7,26 @@ const atlas = @import("atlas.zig");
 
 pub const RenderEngine = struct {
     renderer: *sdl.Renderer,
-    texture: *csdl.SDL_Texture,
 
-    pub fn init(renderer: *sdl.Renderer, allocator: std.mem.Allocator) !RenderEngine {
-        const texture = try loadTexture(renderer.renderer, allocator);
+    pub fn init(renderer: *sdl.Renderer) !RenderEngine {
         return .{
             .renderer = renderer,
-            .texture = texture,
         };
-    }
-
-    pub fn deinit(self: *RenderEngine) void {
-        csdl.SDL_DestroyTexture(self.texture);
     }
 
     fn loadTexture(
         renderer: *csdl.SDL_Renderer,
         allocator: std.mem.Allocator,
     ) !*csdl.SDL_Texture {
-        const bitmap = try allocator.alloc(u8, atlas.ATLAS_WIDTH * atlas.ATLAS_HEIGHT * 4);
+        const bitmap = try atlas.getBitmap(allocator);
         defer allocator.free(bitmap);
-        for (0..atlas.ATLAS_WIDTH) |x| {
-            for (0..atlas.ATLAS_HEIGHT) |y| {
-                const index = y * atlas.ATLAS_WIDTH + x;
-                const value = atlas.ATLAS_TEXTURE[index];
-                if (value != 0) {
-                    bitmap[index * 4 + 0] = 255;
-                    bitmap[index * 4 + 1] = 255;
-                    bitmap[index * 4 + 2] = 255;
-                } else {
-                    bitmap[index * 4 + 0] = 0;
-                    bitmap[index * 4 + 1] = 0;
-                    bitmap[index * 4 + 2] = 0;
-                }
-                bitmap[index * 4 + 3] = 255;
-            }
-        }
 
         const surface = csdl.SDL_CreateSurfaceFrom(
             atlas.ATLAS_WIDTH,
             atlas.ATLAS_HEIGHT,
-            csdl.SDL_PIXELFORMAT_RGBA8888,
+            csdl.SDL_PIXELFORMAT_RGB24,
             @ptrCast(@constCast(bitmap)),
-            atlas.ATLAS_WIDTH * 4,
+            atlas.ATLAS_WIDTH * 3,
         );
         if (surface == null) {
             const tmp: [*c]const u8 = csdl.SDL_GetError();
@@ -125,7 +102,7 @@ pub const RenderEngine = struct {
     }
 
     pub fn drawTextureTest(self: *RenderEngine) !void {
-        var dst_rect: csdl.SDL_FRect = .{
+        const dst_rect: csdl.SDL_FRect = .{
             .x = 0,
             .y = 0,
             .w = atlas.ATLAS_WIDTH,
@@ -133,6 +110,66 @@ pub const RenderEngine = struct {
         };
         if (!csdl.SDL_RenderTexture(self.renderer.renderer, self.texture, null, &dst_rect)) {
             return error.RenderError;
+        }
+    }
+
+    pub fn drawTexture(
+        self: *RenderEngine,
+        texture: *csdl.SDL_Texture,
+        src_rect: ?math.rect.Rect2(f32),
+        dst_rect: ?math.rect.Rect2(f32),
+    ) !void {
+        var tmp_src_rect: csdl.SDL_FRect = undefined;
+        const csrc_rect = if (src_rect) |src| RECT: {
+            tmp_src_rect = .{
+                .x = src.pos.x,
+                .y = src.pos.y,
+                .w = src.size.x,
+                .h = src.size.y,
+            };
+            break :RECT &tmp_src_rect;
+        } else null;
+
+        var tmp_dst_rect: csdl.SDL_FRect = undefined;
+        const cdst_rect = if (dst_rect) |dst| RECT: {
+            tmp_dst_rect = .{
+                .x = dst.pos.x,
+                .y = dst.pos.y,
+                .w = dst.size.x,
+                .h = dst.size.y,
+            };
+            break :RECT &tmp_dst_rect;
+        } else null;
+
+        if (!csdl.SDL_RenderTexture(
+            self.renderer.renderer,
+            texture,
+            csrc_rect,
+            cdst_rect,
+        )) {
+            return error.RenderError;
+        }
+    }
+
+    pub fn drawText(
+        self: *RenderEngine,
+        start_location: math.vec.Vec2(f32),
+        table: []const math.rect.Rect2(f32),
+        text: []const u8,
+    ) !void {
+        var char_location = start_location;
+        for (text) |c| {
+            const text_rect = table[c];
+            try self.drawTexture(
+                text_rect,
+                math.rect.Rect2(f32).init(
+                    char_location.x,
+                    char_location.y,
+                    text_rect.getWidth(),
+                    text_rect.getHeight(),
+                ),
+            );
+            char_location.x += text_rect.getWidth();
         }
     }
 };
