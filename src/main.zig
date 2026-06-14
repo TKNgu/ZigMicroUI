@@ -44,7 +44,7 @@ pub fn main() !void {
     defer render_engine.deinit();
 
     var window_rect = math.rect.Rect2(f32).init(100, 100, 600, 400);
-    var is_window_show = true;
+    var is_window_show = false;
 
     var is_running = true;
     while (is_running) {
@@ -79,6 +79,54 @@ pub fn main() !void {
             continue;
         }
 
+        const box_one = math.rect.Rect2(f32).init(10, 10, 100, 100);
+        ui.genSrcLineID(&tmp_id, @src());
+        const box_one_color =
+            if (id_logic.updateHover(box_one, tmp_id)) simple_style.hover_border_color else simple_style.normal_border_color;
+        ui.drawFrame(
+            &render_engine,
+            box_one,
+            box_one_color,
+            simple_style.border_color,
+        ) catch {
+            is_running = false;
+            continue;
+        };
+
+        const box_two = math.rect.Rect2(f32).init(200, 200, 100, 100);
+        ui.genSrcLineID(&tmp_id, @src());
+        const box_two_color =
+            if (id_logic.updateHover(box_two, tmp_id)) simple_style.hover_border_color else simple_style.normal_border_color;
+        if (id_logic.updateMouseDown(box_two, tmp_id)) {
+            std.debug.print("Down\n", .{});
+        }
+        ui.drawFrame(
+            &render_engine,
+            box_two,
+            box_two_color,
+            simple_style.border_color,
+        ) catch {
+            is_running = false;
+            continue;
+        };
+
+        const box_three = math.rect.Rect2(f32).init(300, 300, 100, 100);
+        ui.genSrcLineID(&tmp_id, @src());
+        const box_three_color =
+            if (id_logic.updateHover(box_three, tmp_id)) simple_style.hover_border_color else simple_style.normal_border_color;
+        if (id_logic.updateMouseUp(box_three, tmp_id)) {
+            std.debug.print("Up\n", .{});
+        }
+        ui.drawFrame(
+            &render_engine,
+            box_three,
+            box_three_color,
+            simple_style.border_color,
+        ) catch {
+            is_running = false;
+            continue;
+        };
+
         if (is_window_show) {
             try ui.drawFrame(
                 &render_engine,
@@ -90,11 +138,12 @@ pub fn main() !void {
             var window_layout = ui.createRowLayout(5).init(window_rect, &.{ 20, 20, 20, -15, 15 });
             {
                 const titlebar_rect = window_layout.next();
+                ui.genSrcLineID(&tmp_id, @src());
                 try ui.drawFrame(
                     &render_engine,
                     titlebar_rect,
                     simple_style.window_titlebar_color,
-                    simple_style.normal_border_color,
+                    if (id_logic.updateHover(titlebar_rect, tmp_id)) simple_style.hover_border_color else simple_style.normal_border_color,
                 );
 
                 var titlebar_layout = ui.createColumnLayout(3).init(titlebar_rect, &.{ 100, -20, 20 });
@@ -120,7 +169,6 @@ pub fn main() !void {
                 ui.genSrcLineID(&tmp_id, @src());
                 if (id_logic.updateMouseUp(titlebar_close_rect, tmp_id)) {
                     id_logic.resetMouseUp();
-                    std.debug.print("mouse up\n", .{});
                     is_window_show = false;
                 }
 

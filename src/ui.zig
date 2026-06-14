@@ -193,40 +193,40 @@ pub const IdLogic = struct {
     }
 
     pub fn updateHover(self: *IdLogic, rect: math.rect.Rect2(f32), id: ID) bool {
-        if (rect.contains(self.mouse_pos)) {
-            self.hover_id = id;
-            return true;
+        if (self.mouse_down_id == null) {
+            if (rect.contains(self.mouse_pos)) {
+                self.hover_id = id;
+                return true;
+            } else {
+                return false;
+            }
+        } else {
+            if (self.mouse_down_id == id) {
+                return true;
+            } else {
+                return false;
+            }
         }
-        return false;
     }
 
     pub fn updateMouseDown(self: *IdLogic, rect: math.rect.Rect2(f32), id: ID) bool {
-        if (rect.contains(self.mouse_pos)) {
-            self.hover_id = id;
-            if (self.is_mouse_down and self.mouse_down_id == null) {
-                self.mouse_down_id = id;
-                return true;
-            }
-        }
-        return self.mouse_down_id == id;
-    }
-
-    pub fn updateMouseUp(self: *IdLogic, rect: math.rect.Rect2(f32), id: ID) bool {
-        if (rect.contains(self.mouse_pos)) {
-            self.hover_id = id;
-            if (self.is_mouse_down) {
-                if (self.mouse_down_id == null) {
+        if (self.is_mouse_down) {
+            if (self.mouse_down_id == null) {
+                if (rect.contains(self.mouse_pos)) {
                     self.mouse_down_id = id;
+                    return true;
+                } else {
+                    return false;
                 }
             } else {
-                if (self.mouse_down_id == id) {
-                    self.mouse_up_id = id;
-                    return true;
-                }
+                return false;
             }
+        } else {
+            return false;
         }
-        return false;
     }
+
+    pub fn updateMouseUp(self: *IdLogic, rect: math.rect.Rect2(f32), id: ID) bool {}
 
     pub inline fn resetMouseDown(self: *IdLogic) void {
         if (!self.is_mouse_down) {
