@@ -209,24 +209,27 @@ pub const IdLogic = struct {
         }
     }
 
-    pub fn updateMouseDown(self: *IdLogic, rect: math.rect.Rect2(f32), id: ID) bool {
-        if (self.is_mouse_down) {
-            if (self.mouse_down_id == null) {
-                if (rect.contains(self.mouse_pos)) {
-                    self.mouse_down_id = id;
-                    return true;
-                } else {
-                    return false;
-                }
-            } else {
-                return false;
-            }
-        } else {
-            return false;
-        }
+    pub fn updateMouseDown(_: *IdLogic, _: math.rect.Rect2(f32), _: ID) bool {
+        return false;
+        // if (self.is_mouse_down) {
+        //     if (self.mouse_down_id == null) {
+        //         if (rect.contains(self.mouse_pos)) {
+        //             self.mouse_down_id = id;
+        //             return true;
+        //         } else {
+        //             return false;
+        //         }
+        //     } else {
+        //         return false;
+        //     }
+        // } else {
+        //     return false;
+        // }
     }
 
-    pub fn updateMouseUp(self: *IdLogic, rect: math.rect.Rect2(f32), id: ID) bool {}
+    pub fn updateMouseUp(_: *IdLogic, _: math.rect.Rect2(f32), _: ID) bool {
+        return false;
+    }
 
     pub inline fn resetMouseDown(self: *IdLogic) void {
         if (!self.is_mouse_down) {

@@ -8,6 +8,103 @@ const ui = @import("ui.zig");
 const style = @import("style.zig");
 const atlas = @import("atlas.zig");
 
+const UIState = enum {
+    normal,
+    hover,
+    mouse_down,
+    mouse_up,
+};
+
+const SampleEvent = struct {
+    last_mouse_hover_id: ?ui.ID = null,
+    mouse_down_id: ?ui.ID = null,
+
+    mouse_hover_id: ?ui.ID = null,
+
+    pub fn init() SampleEvent {
+        return .{};
+    }
+
+    pub fn renderView(
+        self: *SampleEvent,
+        simple_style: *const style.Style,
+        render_engine: *render.RenderEngine,
+        mouse_pos: math.vec.Vec2(f32),
+        is_mouse_down: bool,
+    ) !void {
+        self.mouse_hover_id = null;
+
+        var tmp_id = ui.HASH_INITIAL;
+        {
+            const box = math.rect.Rect2(f32).init(50, 50, 100, 100);
+            ui.genSrcLineID(&tmp_id, @src());
+            try self.drawBox(box, tmp_id, simple_style, mouse_pos, is_mouse_down, render_engine);
+        }
+
+        {
+            const box = math.rect.Rect2(f32).init(200, 200, 100, 100);
+            ui.genSrcLineID(&tmp_id, @src());
+            try self.drawBox(box, tmp_id, simple_style, mouse_pos, is_mouse_down, render_engine);
+        }
+
+        self.last_mouse_hover_id = self.mouse_hover_id;
+        if (!is_mouse_down) {
+            self.mouse_down_id = null;
+        }
+    }
+
+    pub fn update(self: *SampleEvent, id: ui.ID, is_contain: bool, is_mouse_down: bool) UIState {
+        if (is_mouse_down) {
+            if (self.mouse_down_id != null) {
+                return if (self.mouse_down_id == id) .mouse_down else .normal;
+            }
+            if (self.last_mouse_hover_id == id) {
+                self.mouse_down_id = id;
+                return .mouse_down;
+            }
+            return .normal;
+        }
+        if (!is_contain) {
+            return .normal;
+        }
+        if (self.mouse_down_id == id) {
+            return .mouse_up;
+        }
+        self.mouse_hover_id = id;
+        return .hover;
+    }
+
+    pub fn drawBox(
+        self: *SampleEvent,
+        box: math.rect.Rect2(f32),
+        id: ui.ID,
+        simple_style: *const style.Style,
+        mouse_pos: math.vec.Vec2(f32),
+        is_mouse_down: bool,
+        render_engine: *render.RenderEngine,
+    ) !void {
+        const state = self.update(id, box.contains(mouse_pos), is_mouse_down);
+
+        var box_color = simple_style.color_button;
+        switch (state) {
+            .normal => box_color = simple_style.color_button,
+            .hover => box_color = simple_style.color_buttonhover,
+            .mouse_down => box_color = simple_style.color_buttonfocus,
+            .mouse_up => {
+                std.debug.print("Pressed down {}\n", .{id});
+                box_color = simple_style.color_button;
+            },
+        }
+
+        try ui.drawFrame(
+            render_engine,
+            box,
+            box_color,
+            color.DebugHighContrast.border,
+        );
+    }
+};
+
 pub fn main() !void {
     if (!csdl.SDL_Init(csdl.SDL_INIT_VIDEO)) {
         const error_log = csdl.SDL_GetError();
@@ -34,7 +131,11 @@ pub fn main() !void {
     var is_mouse_down = false;
     var id_logic = ui.IdLogic{};
 
-    const simple_style: style.Style = .{};
+    var simple_style: style.Style = .{};
+    simple_style.color_button = color.DebugHighContrast.button;
+    simple_style.color_buttonhover = color.DebugHighContrast.button_hover;
+    simple_style.color_buttonfocus = color.DebugHighContrast.button_active;
+
     var render_engine = try render.RenderEngine.init(
         &renderer,
         "data/JetBrainsMono-Bold.ttf",
@@ -45,6 +146,8 @@ pub fn main() !void {
 
     var window_rect = math.rect.Rect2(f32).init(100, 100, 600, 400);
     var is_window_show = false;
+
+    var sample_event = SampleEvent.init();
 
     var is_running = true;
     while (is_running) {
@@ -79,49 +182,11 @@ pub fn main() !void {
             continue;
         }
 
-        const box_one = math.rect.Rect2(f32).init(10, 10, 100, 100);
-        ui.genSrcLineID(&tmp_id, @src());
-        const box_one_color =
-            if (id_logic.updateHover(box_one, tmp_id)) simple_style.hover_border_color else simple_style.normal_border_color;
-        ui.drawFrame(
+        sample_event.renderView(
+            &simple_style,
             &render_engine,
-            box_one,
-            box_one_color,
-            simple_style.border_color,
-        ) catch {
-            is_running = false;
-            continue;
-        };
-
-        const box_two = math.rect.Rect2(f32).init(200, 200, 100, 100);
-        ui.genSrcLineID(&tmp_id, @src());
-        const box_two_color =
-            if (id_logic.updateHover(box_two, tmp_id)) simple_style.hover_border_color else simple_style.normal_border_color;
-        if (id_logic.updateMouseDown(box_two, tmp_id)) {
-            std.debug.print("Down\n", .{});
-        }
-        ui.drawFrame(
-            &render_engine,
-            box_two,
-            box_two_color,
-            simple_style.border_color,
-        ) catch {
-            is_running = false;
-            continue;
-        };
-
-        const box_three = math.rect.Rect2(f32).init(300, 300, 100, 100);
-        ui.genSrcLineID(&tmp_id, @src());
-        const box_three_color =
-            if (id_logic.updateHover(box_three, tmp_id)) simple_style.hover_border_color else simple_style.normal_border_color;
-        if (id_logic.updateMouseUp(box_three, tmp_id)) {
-            std.debug.print("Up\n", .{});
-        }
-        ui.drawFrame(
-            &render_engine,
-            box_three,
-            box_three_color,
-            simple_style.border_color,
+            mouse_pos,
+            is_mouse_down,
         ) catch {
             is_running = false;
             continue;
