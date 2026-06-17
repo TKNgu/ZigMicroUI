@@ -49,6 +49,8 @@ pub fn main() !void {
 
     var window_rect = math.rect.Rect2(f32).init(100, 100, 600, 400);
     var is_window_show = true;
+    var left_layout_size: f32 = 200;
+    var select_size: f32 = 2;
 
     var is_running = true;
     while (is_running) {
@@ -188,9 +190,35 @@ pub fn main() !void {
                     simple_style.window_body_border_color,
                 );
 
-                var body_layout = ui.createColumnLayout(2).init(body_rect, &.{ 200, 0 });
+                var body_layout = ui.createColumnLayout(3).init(
+                    body_rect,
+                    &.{ left_layout_size, select_size, 0 },
+                );
                 {
                     const body_left_rect = body_layout.next();
+                    try ui.drawFrame(
+                        &render_engine,
+                        body_left_rect,
+                        simple_style.window_body_color,
+                        simple_style.window_body_border_color,
+                    );
+                }
+
+                {
+                    const body_left_rect = body_layout.next();
+                    const state = id_logic.update(ui.genSrcLineID(&tmp_id, @src()), body_left_rect.contains(mouse_pos));
+                    if (state == .hover or state == .mouse_down) {
+                        select_size = 6;
+                    } else {
+                        select_size = 2;
+                    }
+                    if (state == .mouse_down) {
+                        const delta = math.vec.Vec2(f32).init(
+                            mouse_pos.x - last_mouse_post.x,
+                            mouse_pos.y - last_mouse_post.y,
+                        );
+                        left_layout_size += delta.x;
+                    }
                     try ui.drawFrame(
                         &render_engine,
                         body_left_rect,
