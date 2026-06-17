@@ -174,82 +174,54 @@ pub fn sourceLocationToString(comptime s: std.builtin.SourceLocation) []const u8
     });
 }
 
-pub fn genSrcLineID(id: *ID, comptime s: std.builtin.SourceLocation) void {
+pub fn genSrcLineID(id: *ID, comptime s: std.builtin.SourceLocation) ID {
     hash(id, sourceLocationToString(s));
+    return id.*;
 }
 
 pub const IdLogic = struct {
-    hover_id: ?ID = null,
-    mouse_down_id: ?ID = null,
-    mouse_up_id: ?ID = null,
+    pub const State = enum {
+        normal,
+        hover,
+        mouse_down,
+        mouse_up,
+    };
 
-    mouse_pos: math.vec.Vec2(f32) = undefined,
+    last_hover_id: ?ID = null,
+    down_id: ?ID = null,
+    hover_id: ?ID = null,
     is_mouse_down: bool = false,
 
-    pub fn updateMouse(self: *IdLogic, mouse_pos: math.vec.Vec2(f32), is_mouse_down: bool) void {
-        self.mouse_pos = mouse_pos;
+    pub fn begin(self: *IdLogic, is_mouse_down: bool) void {
         self.is_mouse_down = is_mouse_down;
         self.hover_id = null;
     }
 
-    pub fn updateHover(self: *IdLogic, rect: math.rect.Rect2(f32), id: ID) bool {
-        if (self.mouse_down_id == null) {
-            if (rect.contains(self.mouse_pos)) {
-                self.hover_id = id;
-                return true;
-            } else {
-                return false;
+    pub fn update(self: *IdLogic, id: ID, is_contain: bool) State {
+        if (self.is_mouse_down) {
+            if (self.down_id != null) {
+                return if (self.down_id == id) .mouse_down else .normal;
             }
-        } else {
-            if (self.mouse_down_id == id) {
-                return true;
-            } else {
-                return false;
+            if (self.last_hover_id == id) {
+                self.down_id = id;
+                return .mouse_down;
             }
+            return .normal;
         }
+        if (!is_contain) {
+            return .normal;
+        }
+        if (self.down_id == id) {
+            return .mouse_up;
+        }
+        self.hover_id = id;
+        return .hover;
     }
 
-    pub fn updateMouseDown(_: *IdLogic, _: math.rect.Rect2(f32), _: ID) bool {
-        return false;
-        // if (self.is_mouse_down) {
-        //     if (self.mouse_down_id == null) {
-        //         if (rect.contains(self.mouse_pos)) {
-        //             self.mouse_down_id = id;
-        //             return true;
-        //         } else {
-        //             return false;
-        //         }
-        //     } else {
-        //         return false;
-        //     }
-        // } else {
-        //     return false;
-        // }
-    }
-
-    pub fn updateMouseUp(_: *IdLogic, _: math.rect.Rect2(f32), _: ID) bool {
-        return false;
-    }
-
-    pub inline fn resetMouseDown(self: *IdLogic) void {
+    pub fn end(self: *IdLogic) void {
+        self.last_hover_id = self.hover_id;
         if (!self.is_mouse_down) {
-            self.mouse_down_id = null;
+            self.down_id = null;
         }
-    }
-
-    pub inline fn resetMouseUp(self: *IdLogic) void {
-        self.mouse_up_id = null;
-    }
-
-    pub inline fn getIsHover(self: *const IdLogic, id: ID) bool {
-        return self.hover_id == id;
-    }
-
-    pub inline fn getIsMouseDown(self: *const IdLogic, id: ID) bool {
-        return self.mouse_down_id == id;
-    }
-
-    pub inline fn getIsMouseUp(self: *const IdLogic, id: ID) bool {
-        return self.mouse_up_id == id;
     }
 };

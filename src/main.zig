@@ -8,103 +8,6 @@ const ui = @import("ui.zig");
 const style = @import("style.zig");
 const atlas = @import("atlas.zig");
 
-const UIState = enum {
-    normal,
-    hover,
-    mouse_down,
-    mouse_up,
-};
-
-const SampleEvent = struct {
-    last_mouse_hover_id: ?ui.ID = null,
-    mouse_down_id: ?ui.ID = null,
-
-    mouse_hover_id: ?ui.ID = null,
-
-    pub fn init() SampleEvent {
-        return .{};
-    }
-
-    pub fn renderView(
-        self: *SampleEvent,
-        simple_style: *const style.Style,
-        render_engine: *render.RenderEngine,
-        mouse_pos: math.vec.Vec2(f32),
-        is_mouse_down: bool,
-    ) !void {
-        self.mouse_hover_id = null;
-
-        var tmp_id = ui.HASH_INITIAL;
-        {
-            const box = math.rect.Rect2(f32).init(50, 50, 100, 100);
-            ui.genSrcLineID(&tmp_id, @src());
-            try self.drawBox(box, tmp_id, simple_style, mouse_pos, is_mouse_down, render_engine);
-        }
-
-        {
-            const box = math.rect.Rect2(f32).init(200, 200, 100, 100);
-            ui.genSrcLineID(&tmp_id, @src());
-            try self.drawBox(box, tmp_id, simple_style, mouse_pos, is_mouse_down, render_engine);
-        }
-
-        self.last_mouse_hover_id = self.mouse_hover_id;
-        if (!is_mouse_down) {
-            self.mouse_down_id = null;
-        }
-    }
-
-    pub fn update(self: *SampleEvent, id: ui.ID, is_contain: bool, is_mouse_down: bool) UIState {
-        if (is_mouse_down) {
-            if (self.mouse_down_id != null) {
-                return if (self.mouse_down_id == id) .mouse_down else .normal;
-            }
-            if (self.last_mouse_hover_id == id) {
-                self.mouse_down_id = id;
-                return .mouse_down;
-            }
-            return .normal;
-        }
-        if (!is_contain) {
-            return .normal;
-        }
-        if (self.mouse_down_id == id) {
-            return .mouse_up;
-        }
-        self.mouse_hover_id = id;
-        return .hover;
-    }
-
-    pub fn drawBox(
-        self: *SampleEvent,
-        box: math.rect.Rect2(f32),
-        id: ui.ID,
-        simple_style: *const style.Style,
-        mouse_pos: math.vec.Vec2(f32),
-        is_mouse_down: bool,
-        render_engine: *render.RenderEngine,
-    ) !void {
-        const state = self.update(id, box.contains(mouse_pos), is_mouse_down);
-
-        var box_color = simple_style.color_button;
-        switch (state) {
-            .normal => box_color = simple_style.color_button,
-            .hover => box_color = simple_style.color_buttonhover,
-            .mouse_down => box_color = simple_style.color_buttonfocus,
-            .mouse_up => {
-                std.debug.print("Pressed down {}\n", .{id});
-                box_color = simple_style.color_button;
-            },
-        }
-
-        try ui.drawFrame(
-            render_engine,
-            box,
-            box_color,
-            color.DebugHighContrast.border,
-        );
-    }
-};
-
 pub fn main() !void {
     if (!csdl.SDL_Init(csdl.SDL_INIT_VIDEO)) {
         const error_log = csdl.SDL_GetError();
@@ -145,9 +48,7 @@ pub fn main() !void {
     defer render_engine.deinit();
 
     var window_rect = math.rect.Rect2(f32).init(100, 100, 600, 400);
-    var is_window_show = false;
-
-    var sample_event = SampleEvent.init();
+    var is_window_show = true;
 
     var is_running = true;
     while (is_running) {
@@ -173,24 +74,14 @@ pub fn main() !void {
             }
         }
 
-        var tmp_id = ui.HASH_INITIAL;
-        id_logic.updateMouse(mouse_pos, is_mouse_down);
-        defer id_logic.resetMouseDown();
-
         if (!renderer.clear(90, 95, 100, 255)) {
             is_running = false;
             continue;
         }
 
-        sample_event.renderView(
-            &simple_style,
-            &render_engine,
-            mouse_pos,
-            is_mouse_down,
-        ) catch {
-            is_running = false;
-            continue;
-        };
+        id_logic.begin(is_mouse_down);
+        defer id_logic.end();
+        var tmp_id = ui.HASH_INITIAL;
 
         if (is_window_show) {
             try ui.drawFrame(
@@ -203,26 +94,18 @@ pub fn main() !void {
             var window_layout = ui.createRowLayout(5).init(window_rect, &.{ 20, 20, 20, -15, 15 });
             {
                 const titlebar_rect = window_layout.next();
-                ui.genSrcLineID(&tmp_id, @src());
+                const titlebar_state = id_logic.update(ui.genSrcLineID(&tmp_id, @src()), titlebar_rect.contains(mouse_pos));
                 try ui.drawFrame(
                     &render_engine,
                     titlebar_rect,
                     simple_style.window_titlebar_color,
-                    if (id_logic.updateHover(titlebar_rect, tmp_id)) simple_style.hover_border_color else simple_style.normal_border_color,
+                    if (titlebar_state == .hover) simple_style.hover_border_color else simple_style.normal_border_color,
                 );
 
-                var titlebar_layout = ui.createColumnLayout(3).init(titlebar_rect, &.{ 100, -20, 20 });
+                var titlebar_layout = ui.createColumnLayout(2).init(titlebar_rect, &.{ -20, 20 });
                 const titlebar_title_rect = titlebar_layout.next();
-                var title_location = titlebar_title_rect.pos;
-                title_location.x += 5;
-                render_engine.drawText("Hello World!", title_location) catch {
-                    is_running = false;
-                    continue;
-                };
-
-                const mover_rect = titlebar_layout.next();
-                ui.genSrcLineID(&tmp_id, @src());
-                if (id_logic.updateMouseDown(mover_rect, tmp_id)) {
+                const titlebar_title_state = id_logic.update(ui.genSrcLineID(&tmp_id, @src()), titlebar_title_rect.contains(mouse_pos));
+                if (titlebar_title_state == .mouse_down) {
                     const delta = math.vec.Vec2(f32).init(
                         mouse_pos.x - last_mouse_post.x,
                         mouse_pos.y - last_mouse_post.y,
@@ -230,14 +113,20 @@ pub fn main() !void {
                     window_rect.pos.selfAdd(delta);
                 }
 
+                var title_location = titlebar_title_rect.pos;
+                title_location.x += 5;
+                render_engine.drawText("Hello World!", title_location) catch {
+                    is_running = false;
+                    continue;
+                };
+
                 const titlebar_close_rect = titlebar_layout.next();
-                ui.genSrcLineID(&tmp_id, @src());
-                if (id_logic.updateMouseUp(titlebar_close_rect, tmp_id)) {
-                    id_logic.resetMouseUp();
+                const titlebar_close_state = id_logic.update(ui.genSrcLineID(&tmp_id, @src()), titlebar_close_rect.contains(mouse_pos));
+                if (titlebar_close_state == .mouse_down) {
                     is_window_show = false;
                 }
 
-                const border_color = if (id_logic.getIsHover(tmp_id)) simple_style.hover_border_color else simple_style.normal_border_color;
+                const border_color = if (titlebar_state == .hover) simple_style.hover_border_color else simple_style.normal_border_color;
                 try ui.drawFrame(
                     &render_engine,
                     titlebar_close_rect,
@@ -347,8 +236,8 @@ pub fn main() !void {
                     simple_style.button_color,
                     simple_style.window_statusbar_border_color,
                 );
-                ui.genSrcLineID(&tmp_id, @src());
-                if (id_logic.updateMouseDown(statusbar_close_rect, tmp_id)) {
+                const close_state = id_logic.update(ui.genSrcLineID(&tmp_id, @src()), statusbar_close_rect.contains(mouse_pos));
+                if (close_state == .mouse_down) {
                     const delta = math.vec.Vec2(f32).init(
                         mouse_pos.x - last_mouse_post.x,
                         mouse_pos.y - last_mouse_post.y,
