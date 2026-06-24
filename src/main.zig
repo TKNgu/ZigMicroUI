@@ -12,6 +12,47 @@ const Container = struct {
     body: math.rect.Rect2(f32),
     view: math.rect.Rect2(f32),
     clip: math.rect.Rect2(f32),
+
+    is_need_scroll_y: bool = false,
+    is_need_scroll_x: bool = false,
+
+    pub fn updateClip(self: *Container) void {
+        self.clip.pos = self.view.pos;
+        self.clip.size.x = if (self.is_need_scroll_x) self.view.size.x - 10 else self.view.size.x;
+        self.clip.size.y = if (self.is_need_scroll_y) self.view.size.y - 10 else self.view.size.y;
+        self.is_need_scroll_y = self.clip.size.x < self.body.size.x;
+        self.is_need_scroll_x = self.clip.size.y < self.body.size.y;
+    }
+
+    pub fn updateView(self: *Container, view: math.rect.Rect2(f32)) void {
+        const delta = view.pos.sub(self.view.pos);
+        self.view = view;
+        self.body.pos.selfAdd(delta);
+    }
+
+    pub fn getScrollXRect(self: *const Container) ?math.rect.Rect2(f32) {
+        return if (self.is_need_scroll_x)
+            math.rect.Rect2(f32).init(
+                self.clip.pos.x + self.clip.size.x,
+                self.clip.pos.y,
+                10,
+                self.clip.size.y,
+            )
+        else
+            null;
+    }
+
+    pub fn getScrollYRect(self: *const Container) ?math.rect.Rect2(f32) {
+        return if (self.is_need_scroll_y)
+            math.rect.Rect2(f32).init(
+                self.clip.pos.x,
+                self.clip.pos.y + self.clip.size.y,
+                self.clip.size.x,
+                10,
+            )
+        else
+            null;
+    }
 };
 
 pub fn main() !void {
@@ -228,8 +269,34 @@ pub fn main() !void {
                         init_container = true;
                         container.body = body_left_rect;
                         container.view = body_left_rect;
-                        container.clip = body_left_rect;
                     }
+                    container.updateView(body_left_rect);
+                    defer {
+                        const scroll_x_rect = container.getScrollXRect();
+                        if (scroll_x_rect) |scroll_x| {
+                            (ui.drawFrame(
+                                &render_engine,
+                                scroll_x,
+                                simple_style.window_body_color,
+                                simple_style.window_body_border_color,
+                            )) catch {
+                                is_running = false;
+                            };
+                        }
+
+                        const scroll_y_rect = container.getScrollYRect();
+                        if (scroll_y_rect) |scroll_y| {
+                            (ui.drawFrame(
+                                &render_engine,
+                                scroll_y,
+                                simple_style.window_body_color,
+                                simple_style.window_body_border_color,
+                            )) catch {
+                                is_running = false;
+                            };
+                        }
+                    }
+
                     const clip = try clip_stack.push(container.clip);
                     if (!renderer.clip(clip)) {
                         is_running = false;
@@ -253,8 +320,7 @@ pub fn main() !void {
                     );
                     defer {
                         container.body = list_view.body;
-                        container.view = body_left_rect;
-                        container.clip = container.view;
+                        container.updateClip();
                     }
 
                     var count: usize = 0;

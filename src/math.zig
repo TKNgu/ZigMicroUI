@@ -23,14 +23,14 @@ pub const vec = struct {
                 self.y -= b.y;
             }
 
-            pub inline fn add(self: *@This(), b: @This()) @This() {
+            pub inline fn add(self: *const @This(), b: @This()) @This() {
                 return .{
                     .x = self.x + b.x,
                     .y = self.y + b.y,
                 };
             }
 
-            pub inline fn sub(self: *@This(), b: @This()) @This() {
+            pub inline fn sub(self: *const @This(), b: @This()) @This() {
                 return .{
                     .x = self.x - b.x,
                     .y = self.y - b.y,
