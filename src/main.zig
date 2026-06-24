@@ -8,6 +8,12 @@ const ui = @import("ui.zig");
 const style = @import("style.zig");
 const atlas = @import("atlas.zig");
 
+const Container = struct {
+    body: math.rect.Rect2(f32),
+    view: math.rect.Rect2(f32),
+    clip: math.rect.Rect2(f32),
+};
+
 pub fn main() !void {
     if (!csdl.SDL_Init(csdl.SDL_INIT_VIDEO)) {
         const error_log = csdl.SDL_GetError();
@@ -52,6 +58,9 @@ pub fn main() !void {
     var left_layout_size: f32 = 200;
     var select_size: f32 = 2;
 
+    var init_container = false;
+    var container: Container = undefined;
+
     var is_running = true;
     while (is_running) {
         last_mouse_post = mouse_pos;
@@ -86,6 +95,12 @@ pub fn main() !void {
         var tmp_id = ui.HASH_INITIAL;
 
         if (is_window_show) {
+            var clip_stack = ui.ClipStack.init(window_rect);
+            if (!renderer.clip(clip_stack.top())) {
+                is_running = false;
+                continue;
+            }
+
             try ui.drawFrame(
                 &render_engine,
                 window_rect,
@@ -93,7 +108,7 @@ pub fn main() !void {
                 simple_style.window_border_color,
             );
 
-            var window_layout = ui.createRowLayout(5).init(window_rect, &.{ 20, 20, 20, -15, 15 });
+            var window_layout = ui.createRowLayout(5).init(window_rect, &.{ 20, 20, 20, -15, 0 });
             {
                 const titlebar_rect = window_layout.next();
                 const titlebar_state = id_logic.update(ui.genSrcLineID(&tmp_id, @src()), titlebar_rect.contains(mouse_pos));
@@ -104,8 +119,12 @@ pub fn main() !void {
                     if (titlebar_state == .hover) simple_style.hover_border_color else simple_style.normal_border_color,
                 );
 
-                var titlebar_layout = ui.createColumnLayout(2).init(titlebar_rect, &.{ -20, 20 });
-                const titlebar_title_rect = titlebar_layout.next();
+                var titlebar_layout = ui.createColumnLayout(2).init(
+                    titlebar_rect.pos,
+                    titlebar_rect.getWidth(),
+                    &.{ -20, 0 },
+                );
+                const titlebar_title_rect = titlebar_layout.next(titlebar_rect.getHeight());
                 const titlebar_title_state = id_logic.update(ui.genSrcLineID(&tmp_id, @src()), titlebar_title_rect.contains(mouse_pos));
                 if (titlebar_title_state == .mouse_down) {
                     const delta = math.vec.Vec2(f32).init(
@@ -122,7 +141,7 @@ pub fn main() !void {
                     continue;
                 };
 
-                const titlebar_close_rect = titlebar_layout.next();
+                const titlebar_close_rect = titlebar_layout.next(titlebar_rect.getHeight());
                 const titlebar_close_state = id_logic.update(ui.genSrcLineID(&tmp_id, @src()), titlebar_close_rect.contains(mouse_pos));
                 if (titlebar_close_state == .mouse_down) {
                     is_window_show = false;
@@ -146,10 +165,14 @@ pub fn main() !void {
                     simple_style.menu_border_color,
                 );
 
-                var menu_layout = ui.createColumnLayout(5).init(menu_rect, &.{ 50, 50, 50, 50, 50 });
+                var menu_layout = ui.createColumnLayout(5).init(
+                    menu_rect.pos,
+                    menu_rect.getWidth(),
+                    &.{ 50, 50, 50, 50, 50 },
+                );
                 var count: usize = 0;
                 while (count < 5) : (count += 1) {
-                    const menu_item_rect = menu_layout.next();
+                    const menu_item_rect = menu_layout.next(menu_rect.getHeight());
                     try ui.drawFrame(
                         &render_engine,
                         menu_item_rect,
@@ -168,10 +191,14 @@ pub fn main() !void {
                     simple_style.menu_border_color,
                 );
 
-                var toolbar_layout = ui.createColumnLayout(6).init(toolbar_rect, &.{ 20, 20, 20, 20, 20, 20 });
+                var toolbar_layout = ui.createColumnLayout(6).init(
+                    toolbar_rect.pos,
+                    toolbar_rect.getWidth(),
+                    &.{ 20, 20, 20, 20, 20, 20 },
+                );
                 var count: usize = 0;
                 while (count < 10) : (count += 1) {
-                    const toolbar_item_rect = toolbar_layout.next();
+                    const toolbar_item_rect = toolbar_layout.next(toolbar_rect.getHeight());
                     try ui.drawFrame(
                         &render_engine,
                         toolbar_item_rect,
@@ -191,21 +218,67 @@ pub fn main() !void {
                 );
 
                 var body_layout = ui.createColumnLayout(3).init(
-                    body_rect,
+                    body_rect.pos,
+                    body_rect.getWidth(),
                     &.{ left_layout_size, select_size, 0 },
                 );
                 {
-                    const body_left_rect = body_layout.next();
-                    try ui.drawFrame(
-                        &render_engine,
-                        body_left_rect,
-                        simple_style.window_body_color,
-                        simple_style.window_body_border_color,
+                    const body_left_rect = body_layout.next(body_rect.getHeight());
+                    if (!init_container) {
+                        init_container = true;
+                        container.body = body_left_rect;
+                        container.view = body_left_rect;
+                        container.clip = body_left_rect;
+                    }
+                    const clip = try clip_stack.push(container.clip);
+                    if (!renderer.clip(clip)) {
+                        is_running = false;
+                        continue;
+                    }
+                    defer {
+                        if (clip_stack.pop()) |clip_top| {
+                            if (!renderer.clip(clip_top)) {
+                                is_running = false;
+                            }
+                        } else |err| {
+                            std.debug.print("ClipStack.push error: {s}\n", .{@errorName(err)});
+                            is_running = false;
+                        }
+                    }
+
+                    var list_view = ui.createColumnLayout(2).init(
+                        container.body.pos,
+                        container.body.getWidth(),
+                        &.{ 70, 0 },
                     );
+                    defer {
+                        container.body = list_view.body;
+                        container.view = body_left_rect;
+                        container.clip = container.view;
+                    }
+
+                    var count: usize = 0;
+                    while (count < 20) : (count += 1) {
+                        const key_rect = list_view.next(20);
+                        try ui.drawFrame(
+                            &render_engine,
+                            key_rect,
+                            simple_style.window_body_color,
+                            simple_style.window_body_border_color,
+                        );
+
+                        const value_rect = list_view.next(20);
+                        try ui.drawFrame(
+                            &render_engine,
+                            value_rect,
+                            simple_style.window_body_color,
+                            simple_style.window_body_border_color,
+                        );
+                    }
                 }
 
                 {
-                    const body_left_rect = body_layout.next();
+                    const body_left_rect = body_layout.next(body_rect.getHeight());
                     const state = id_logic.update(ui.genSrcLineID(&tmp_id, @src()), body_left_rect.contains(mouse_pos));
                     if (state == .hover or state == .mouse_down) {
                         select_size = 6;
@@ -228,7 +301,7 @@ pub fn main() !void {
                 }
 
                 {
-                    const body_right_rect = body_layout.next();
+                    const body_right_rect = body_layout.next(body_rect.getHeight());
                     try ui.drawFrame(
                         &render_engine,
                         body_right_rect,
@@ -247,8 +320,12 @@ pub fn main() !void {
                     simple_style.window_statusbar_border_color,
                 );
 
-                var statusbar_layout = ui.createColumnLayout(3).init(statusbar_rect, &.{ 100, -30, 30 });
-                const statusbar_title_rect = statusbar_layout.next();
+                var statusbar_layout = ui.createColumnLayout(3).init(
+                    statusbar_rect.pos,
+                    statusbar_rect.getWidth(),
+                    &.{ 100, -30, 0 },
+                );
+                const statusbar_title_rect = statusbar_layout.next(statusbar_rect.getHeight());
                 try ui.drawFrame(
                     &render_engine,
                     statusbar_title_rect,
@@ -256,8 +333,8 @@ pub fn main() !void {
                     simple_style.window_statusbar_border_color,
                 );
 
-                _ = statusbar_layout.next();
-                const statusbar_close_rect = statusbar_layout.next();
+                _ = statusbar_layout.next(statusbar_rect.getHeight());
+                const statusbar_close_rect = statusbar_layout.next(statusbar_rect.getHeight());
                 try ui.drawFrame(
                     &render_engine,
                     statusbar_close_rect,

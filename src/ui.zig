@@ -56,34 +56,9 @@ pub fn createArrayLayout(comptime N: usize) type {
     };
 }
 
-pub const Layout = struct {
-    const VTable = struct {
-        next: *const fn (*anyopaque) math.rect.Rect2(f32),
-
-        fn create(comptime T: type) VTable {
-            return VTable{
-                .next = struct {
-                    fn next(ptr: *anyopaque) math.rect.Rect2(f32) {
-                        const self: *T = @ptrCast(@alignCast(ptr));
-                        return self.next();
-                    }
-                }.next,
-            };
-        }
-    };
-
-    ptr: *anyopaque,
-    vtable: *const VTable,
-
-    pub inline fn next(self: *const Layout) math.rect.Rect2(f32) {
-        return self.vtable.*.next(self.ptr);
-    }
-};
-
 pub fn createRowLayout(comptime N: usize) type {
     return struct {
         const Self = @This();
-        const VTable = Layout.VTable.create(Self);
 
         body: math.rect.Rect2(f32),
         layout: createArrayLayout(N),
@@ -93,10 +68,6 @@ pub fn createRowLayout(comptime N: usize) type {
                 .body = body,
                 .layout = createArrayLayout(N).init(heights),
             };
-        }
-
-        pub inline fn getBase(self: *Self) Layout {
-            return Layout{ .ptr = self, .vtable = &Self.VTable };
         }
 
         pub fn next(self: *Self) math.rect.Rect2(f32) {
@@ -120,36 +91,57 @@ pub fn createRowLayout(comptime N: usize) type {
 pub fn createColumnLayout(comptime N: usize) type {
     return struct {
         const Self = @This();
-        const VTable = Layout.VTable.create(Self);
 
+        position: math.vec.Vec2(f32),
+        width: f32,
+        width_layout: createArrayLayout(N),
         body: math.rect.Rect2(f32),
-        layout: createArrayLayout(N),
+        row_height: f32 = 0,
 
-        pub fn init(body: math.rect.Rect2(f32), widths: *const [N]f32) Self {
+        pub fn init(position: math.vec.Vec2(f32), width: f32, widths: *const [N]f32) Self {
             return .{
-                .body = body,
-                .layout = createArrayLayout(N).init(widths),
+                .position = position,
+                .width = width,
+                .width_layout = createArrayLayout(N).init(widths),
+                .body = math.rect.Rect2(f32).initVec(
+                    position,
+                    math.vec.Vec2(f32).init(width, 0),
+                ),
             };
         }
 
-        pub inline fn getBase(self: *Self) Layout {
-            return Layout{ .ptr = self, .vtable = &Self.VTable };
-        }
-
-        pub fn next(self: *Self) math.rect.Rect2(f32) {
-            var width = self.layout.next();
-            if (width < 0) {
-                width += self.body.getWidth();
-            } else if (width == 0) {
-                width = self.body.getWidth();
+        pub fn next(self: *Self, height: f32) math.rect.Rect2(f32) {
+            var item_width = self.width_layout.next();
+            if (item_width < 0) {
+                const sum_width = self.position.x - self.body.getX();
+                item_width += self.body.getWidth() - sum_width;
+            } else if (item_width == 0) {
+                const sum_width = self.position.x - self.body.getX();
+                item_width = self.body.getWidth() - sum_width;
             }
-            const rect = math.rect.Rect2(f32).initVec(
-                self.body.pos,
-                math.vec.Vec2(f32).init(width, self.body.getHeight()),
+
+            const item_height = if (self.row_height < height) UPDATE_HEIGHT: {
+                self.body.addHeight(height - self.row_height);
+                self.row_height = height;
+                break :UPDATE_HEIGHT height;
+            } else self.row_height;
+
+            const item_rect = math.rect.Rect2(f32).initVec(
+                self.position,
+                math.vec.Vec2(f32).init(item_width, item_height),
             );
-            self.body.pos.selfAdd(math.vec.Vec2(f32).init(width, 0));
-            self.body.size.selfSub(math.vec.Vec2(f32).init(width, 0));
-            return rect;
+
+            if (self.width_layout.getIsEnd()) {
+                self.position = math.vec.Vec2(f32).init(
+                    self.body.getX(),
+                    self.body.getY() + self.body.getHeight(),
+                );
+                self.row_height = 0;
+            } else {
+                self.position.x += item_width;
+            }
+
+            return item_rect;
         }
     };
 }
@@ -223,5 +215,55 @@ pub const IdLogic = struct {
         if (!self.is_mouse_down) {
             self.down_id = null;
         }
+    }
+};
+
+pub const ClipStack = struct {
+    stack: [32]math.rect.Rect2(f32),
+    index: usize,
+
+    pub fn init(clip: math.rect.Rect2(f32)) ClipStack {
+        var self: ClipStack = undefined;
+        self.stack[0] = clip;
+        self.index = 0;
+        return self;
+    }
+
+    pub fn max(a: anytype, b: anytype) @TypeOf(a) {
+        return if (a > b) a else b;
+    }
+
+    pub fn min(a: anytype, b: anytype) @TypeOf(a) {
+        return if (a < b) a else b;
+    }
+
+    pub fn containRect(rect_a: math.rect.Rect2(f32), rect_b: math.rect.Rect2(f32)) math.rect.Rect2(f32) {
+        const x = max(rect_a.pos.x, rect_b.pos.x);
+        const y = max(rect_a.pos.y, rect_b.pos.y);
+        const w = min(rect_a.pos.x + rect_a.size.x, rect_b.pos.x + rect_b.size.x) - x;
+        const h = min(rect_a.pos.y + rect_a.size.y, rect_b.pos.y + rect_b.size.y) - y;
+        return math.rect.Rect2(f32).init(x, y, w, h);
+    }
+
+    pub fn push(self: *ClipStack, clip: math.rect.Rect2(f32)) !math.rect.Rect2(f32) {
+        if (self.index >= self.stack.len - 1) {
+            return error.ClipStackOverflow;
+        }
+        self.index += 1;
+        self.stack[self.index] =
+            containRect(clip, self.stack[self.index - 1]);
+        return self.top();
+    }
+
+    pub fn pop(self: *ClipStack) !math.rect.Rect2(f32) {
+        if (self.index == 0) {
+            return error.ClipStackUnderflow;
+        }
+        self.index -= 1;
+        return self.stack[self.index];
+    }
+
+    pub fn top(self: ClipStack) math.rect.Rect2(f32) {
+        return self.stack[self.index];
     }
 };

@@ -80,6 +80,22 @@ pub const rect = struct {
                 return self.pos.x <= point.x and self.pos.x + self.size.x >= point.x and
                     self.pos.y <= point.y and self.pos.y + self.size.y >= point.y;
             }
+
+            pub inline fn addWidth(self: *Rect2(T), width: T) void {
+                self.size.x += width;
+            }
+
+            pub inline fn addHeight(self: *Rect2(T), height: T) void {
+                self.size.y += height;
+            }
+
+            pub inline fn moveX(self: *Rect2(T), x: T) void {
+                self.pos.x += x;
+            }
+
+            pub inline fn moveY(self: *Rect2(T), y: T) void {
+                self.pos.y += y;
+            }
         };
     }
 };

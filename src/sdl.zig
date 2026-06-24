@@ -30,6 +30,11 @@ pub const Renderer = struct {
         if (renderer == null) {
             return error.SDLCreateRendererFailed;
         }
+        errdefer csdl.SDL_DestroyRenderer(renderer);
+
+        if (csdl.SDL_RenderClipEnabled(renderer)) {
+            return error.SDLRenderClipEnabledFailed;
+        }
         return .{
             .renderer = renderer.?,
         };
@@ -46,6 +51,16 @@ pub const Renderer = struct {
 
     pub fn present(self: *Renderer) bool {
         return csdl.SDL_RenderPresent(self.renderer);
+    }
+
+    pub fn clip(self: *Renderer, rect: math.rect.Rect2(f32)) bool {
+        const sdl_rect = csdl.SDL_Rect{
+            .x = @intFromFloat(std.math.floor(rect.pos.x)),
+            .y = @intFromFloat(std.math.floor(rect.pos.y)),
+            .w = @intFromFloat(std.math.floor(rect.size.x + 1)),
+            .h = @intFromFloat(std.math.floor(rect.size.y + 1)),
+        };
+        return csdl.SDL_SetRenderClipRect(self.renderer, &sdl_rect);
     }
 };
 
