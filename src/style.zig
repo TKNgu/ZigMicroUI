@@ -1,5 +1,6 @@
-const color = @import("color.zig");
-const math = @import("math.zig");
+const graphic = @import("graphic");
+const color = graphic.color;
+const math = graphic.math;
 
 pub const Style = struct {
     size: math.vec.Vec2(f32) = .{ .x = 68, .y = 10 },
@@ -8,6 +9,7 @@ pub const Style = struct {
     indent: u32 = 24,
 
     title_height: u32 = 24,
+
     scrollbar_size: u32 = 12,
     thumb_size: u32 = 8,
 

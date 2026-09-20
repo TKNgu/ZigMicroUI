@@ -1,9 +1,17 @@
 const std = @import("std");
-
 const c_microui = @import("c_microui");
+
+const graphic = @import("graphic");
+const sdl = graphic.sdl;
+const render = graphic.render;
+const style = @import("style.zig");
+const math = graphic.math;
 
 var button_map: [256]u8 = [_]u8{0} ** 256;
 var key_map: [256]u8 = [_]u8{0} ** 256;
+var logbuf = LogBuf.init();
+var bg: [3]f32 = .{ 90, 95, 100 };
+var checks: [3]i32 = [_]i32{ 1, 0, 1 };
 
 const LogBuf = struct {
     buf: [64000]u8 = undefined,
@@ -29,16 +37,24 @@ fn textWidth(_: c_microui.mu_Font, text: [*c]const u8, len: c_int) callconv(.c) 
     if (tmp == -1) {
         tmp = @intCast(std.mem.len(text));
     }
-    return c_microui.r_get_text_width(text, tmp);
+    return 18 * len;
+    // return c_microui.r_get_text_width(text, tmp);
+    // int r_get_text_width(const char* text, int len) {
+    //   int res = 0;
+    //   for (const char* p = text; *p && len--; p++) {
+    //     if ((*p & 0xc0) == 0x80) {
+    //       continue;
+    //     }
+    //     int chr = mu_min((unsigned char)*p, 127);
+    //     res += atlas[ATLAS_FONT + chr].w;
+    //   }
+    //   return res;
+    // }
 }
 
 fn textHeight(_: c_microui.mu_Font) callconv(.c) c_int {
-    return c_microui.r_get_text_height();
+    return 18;
 }
-
-var logbuf = LogBuf.init();
-var bg: [3]f32 = .{ 90, 95, 100 };
-var checks: [3]i32 = [_]i32{ 1, 0, 1 };
 
 fn uint8Slider(ctx: [*c]c_microui.mu_Context, value: *u8, low: i32, high: i32) i32 {
     c_microui.mu_push_id(ctx, @ptrCast(&value), @sizeOf(u8));
@@ -305,18 +321,185 @@ fn processFrame(ctx: [*c]c_microui.mu_Context) void {
 pub fn main(init: std.process.Init) !void {
     const allocator = init.gpa;
 
-    button_map[c_microui.SDL_BUTTON_LEFT & 0xff] = c_microui.MU_MOUSE_LEFT;
-    button_map[c_microui.SDL_BUTTON_RIGHT & 0xff] = c_microui.MU_MOUSE_RIGHT;
-    button_map[c_microui.SDL_BUTTON_MIDDLE & 0xff] = c_microui.MU_MOUSE_MIDDLE;
+    // Init SDL
+    graphic.initSDL() catch |err| {
+        return err;
+    };
+    defer graphic.deinitSDL();
 
-    key_map[c_microui.SDLK_LSHIFT & 0xff] = c_microui.MU_KEY_SHIFT;
-    key_map[c_microui.SDLK_RSHIFT & 0xff] = c_microui.MU_KEY_SHIFT;
-    key_map[c_microui.SDLK_LCTRL & 0xff] = c_microui.MU_KEY_CTRL;
-    key_map[c_microui.SDLK_RCTRL & 0xff] = c_microui.MU_KEY_CTRL;
-    key_map[c_microui.SDLK_LALT & 0xff] = c_microui.MU_KEY_ALT;
-    key_map[c_microui.SDLK_RALT & 0xff] = c_microui.MU_KEY_ALT;
-    key_map[c_microui.SDLK_RETURN & 0xff] = c_microui.MU_KEY_RETURN;
-    key_map[c_microui.SDLK_BACKSPACE & 0xff] = c_microui.MU_KEY_BACKSPACE;
+    const windowWidth: i32 = 800;
+    const windowHeight: i32 = 640;
+    var windowOption: ?*sdl.SDL_Window = null;
+    var renderOption: ?*sdl.SDL_Renderer = null;
+    if (!sdl.SDL_CreateWindowAndRenderer(
+        "TheGame",
+        windowWidth,
+        windowHeight,
+        sdl.SDL_WINDOW_VULKAN,
+        &windowOption,
+        &renderOption,
+    )) {
+        return error.SDLCreateWindowAndRendererFailed;
+    }
+
+    const window = windowOption.?;
+    defer sdl.SDL_DestroyWindow(window);
+
+    const renderer = renderOption.?;
+    defer sdl.SDL_DestroyRenderer(renderer);
+
+    // Render engine
+    var z_render: graphic.Renderer = .{
+        .renderer = renderer,
+    };
+    const text_color: graphic.color.Color = .{
+        .r = 230,
+        .g = 230,
+        .b = 230,
+        .a = 255,
+    };
+    var render_engine = try render.RenderEngine.init(&z_render, "data/JetBrainsMono-Bold.ttf", 16, text_color);
+    defer render_engine.deinit();
+
+    // Init microui
+    button_map[sdl.SDL_BUTTON_LEFT & 0xff] = c_microui.MU_MOUSE_LEFT;
+    button_map[sdl.SDL_BUTTON_RIGHT & 0xff] = c_microui.MU_MOUSE_RIGHT;
+    button_map[sdl.SDL_BUTTON_MIDDLE & 0xff] = c_microui.MU_MOUSE_MIDDLE;
+
+    key_map[sdl.SDLK_LSHIFT & 0xff] = c_microui.MU_KEY_SHIFT;
+    key_map[sdl.SDLK_RSHIFT & 0xff] = c_microui.MU_KEY_SHIFT;
+    key_map[sdl.SDLK_LCTRL & 0xff] = c_microui.MU_KEY_CTRL;
+    key_map[sdl.SDLK_RCTRL & 0xff] = c_microui.MU_KEY_CTRL;
+    key_map[sdl.SDLK_LALT & 0xff] = c_microui.MU_KEY_ALT;
+    key_map[sdl.SDLK_RALT & 0xff] = c_microui.MU_KEY_ALT;
+    key_map[sdl.SDLK_RETURN & 0xff] = c_microui.MU_KEY_RETURN;
+    key_map[sdl.SDLK_BACKSPACE & 0xff] = c_microui.MU_KEY_BACKSPACE;
+
+    const ctx = try allocator.create(c_microui.mu_Context);
+    defer allocator.destroy(ctx);
+
+    c_microui.mu_init(ctx);
+    ctx.*.text_width = textWidth;
+    ctx.*.text_height = textHeight;
+
+    // Main loop
+    var is_running = true;
+    while (is_running) {
+        var event: sdl.SDL_Event = undefined;
+        while (sdl.SDL_PollEvent(&event)) {
+            switch (event.type) {
+                sdl.SDL_EVENT_QUIT => is_running = false,
+                sdl.SDL_EVENT_MOUSE_MOTION => c_microui.mu_input_mousemove(
+                    ctx,
+                    @as(c_int, @intFromFloat(event.motion.x)),
+                    @as(c_int, @intFromFloat(event.motion.y)),
+                ),
+                sdl.SDL_EVENT_MOUSE_WHEEL => c_microui.mu_input_scroll(
+                    ctx,
+                    0,
+                    @as(c_int, @intFromFloat(event.wheel.y * -30)),
+                ),
+                sdl.SDL_EVENT_TEXT_INPUT => c_microui.mu_input_text(ctx, event.text.text),
+                sdl.SDL_EVENT_MOUSE_BUTTON_DOWN, sdl.SDL_EVENT_MOUSE_BUTTON_UP => {
+                    const btn = button_map[event.button.button & 0xff];
+                    if (btn != 0 and event.type == sdl.SDL_EVENT_MOUSE_BUTTON_DOWN) {
+                        c_microui.mu_input_mousedown(
+                            ctx,
+                            @as(c_int, @intFromFloat(event.button.x)),
+                            @as(c_int, @intFromFloat(event.button.y)),
+                            btn,
+                        );
+                    }
+                    if (btn != 0 and event.type == sdl.SDL_EVENT_MOUSE_BUTTON_UP) {
+                        c_microui.mu_input_mouseup(
+                            ctx,
+                            @as(c_int, @intFromFloat(event.button.x)),
+                            @as(c_int, @intFromFloat(event.button.y)),
+                            btn,
+                        );
+                    }
+                },
+                sdl.SDL_EVENT_KEY_DOWN, sdl.SDL_EVENT_KEY_UP => {
+                    const index = event.key.key & 0xff;
+                    const key = key_map[@as(usize, @intCast(index))];
+                    if (key != 0 and event.type == sdl.SDL_EVENT_KEY_DOWN) {
+                        std.debug.print("Key down\n", .{});
+                        c_microui.mu_input_keydown(ctx, key);
+                    }
+                    if (key != 0 and event.type == sdl.SDL_EVENT_KEY_UP) {
+                        std.debug.print("Key up\n", .{});
+                        c_microui.mu_input_keyup(ctx, key);
+                    }
+                },
+                else => {},
+            }
+        }
+
+        processFrame(ctx);
+
+        if (!sdl.SDL_SetRenderDrawColor(
+            renderer,
+            @as(u8, @intFromFloat(bg[0])),
+            @as(u8, @intFromFloat(bg[1])),
+            @as(u8, @intFromFloat(bg[2])),
+            255,
+        )) {
+            is_running = false;
+            continue;
+        }
+        if (!sdl.SDL_RenderClear(renderer)) {
+            is_running = false;
+            continue;
+        }
+
+        var cmd: [*c]c_microui.mu_Command = null;
+        while (c_microui.mu_next_command(ctx, &cmd) != 0) {
+            const cmd_type = cmd.*.type;
+            if (cmd_type == c_microui.MU_COMMAND_TEXT) {
+                const rect = cmd.*.text.pos;
+                const text = cmd.*.text.str;
+                render_engine.drawChar(text[0], math.vec.Vec2(f32).init(
+                    @as(f32, @floatFromInt(rect.x)),
+                    @as(f32, @floatFromInt(rect.y)),
+                )) catch {};
+            } else if (cmd_type == c_microui.MU_COMMAND_RECT) {
+                const rect = cmd.*.rect;
+                const color = cmd.*.rect.color;
+                render_engine.fillRect(math.rect.Rect2(f32).init(
+                    @as(f32, @floatFromInt(rect.rect.x)),
+                    @as(f32, @floatFromInt(rect.rect.y)),
+                    @as(f32, @floatFromInt(rect.rect.w)),
+                    @as(f32, @floatFromInt(rect.rect.h)),
+                ), .{
+                    .r = color.r,
+                    .g = color.g,
+                    .b = color.b,
+                    .a = color.a,
+                }) catch {};
+            } else if (cmd_type == c_microui.MU_COMMAND_ICON) {
+                // std.debug.print("Icon: \n", .{});
+            } else if (cmd_type == c_microui.MU_COMMAND_CLIP) {
+                const rect = cmd.*.clip.rect;
+                _ = z_render.clip(math.rect.Rect2(f32).init(
+                    @as(f32, @floatFromInt(rect.x)),
+                    @as(f32, @floatFromInt(rect.y)),
+                    @as(f32, @floatFromInt(rect.w)),
+                    @as(f32, @floatFromInt(rect.h)),
+                ));
+            }
+        }
+
+        if (!sdl.SDL_RenderPresent(renderer)) {
+            is_running = false;
+            continue;
+        }
+
+        sdl.SDL_Delay(16);
+    }
+}
+
+pub fn back(init: std.process.Init) !void {
+    const allocator = init.gpa;
 
     _ = c_microui.SDL_Init(c_microui.SDL_INIT_EVERYTHING);
     c_microui.r_init();

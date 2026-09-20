@@ -1,8 +1,10 @@
 const std = @import("std");
 const math = @import("math.zig");
 const color = @import("color.zig");
-const csdl = @import("csdl");
-const sdl = @import("sdl.zig");
+const sdl = @import("sdl.zig").sdl;
+const Renderer = @import("sdl.zig").Renderer;
+const Texture = @import("sdl.zig").Texture;
+const Font = @import("sdl.zig").Font;
 
 pub const MU_ICON_MAX: usize = 5;
 pub const ATLAS_WHITE: usize = MU_ICON_MAX;
@@ -1034,14 +1036,14 @@ pub const FontAtlas = struct {
     const BEGIN: u8 = 0x20;
     const END: u8 = 0x7F;
     text_color: color.Color,
-    atlas_texture: sdl.Texture,
+    atlas_texture: Texture,
     atlas_rects: [END + 1]math.rect.Rect2(f32),
 
-    pub fn init(font: *sdl.Font, text_color: color.Color, renderer: *sdl.Renderer) !FontAtlas {
+    pub fn init(font: *Font, text_color: color.Color, renderer: *Renderer) !FontAtlas {
         var texture_area: c_int = 0;
         var max_size: math.vec.Vec2(c_int) = .{ .x = 0, .y = 0 };
         var surfaces = comptime SURFACES: {
-            var surfaces: [END - BEGIN][*c]csdl.SDL_Surface = undefined;
+            var surfaces: [END - BEGIN][*c]sdl.SDL_Surface = undefined;
             for (&surfaces) |*surface| {
                 surface.* = null;
             }
@@ -1052,7 +1054,7 @@ pub const FontAtlas = struct {
             const text: [1:0]u8 = .{@intCast(c)};
             const char_surface = font.renderTextSurface(&text, text_color) catch |err| {
                 for (surfaces[0 .. c - END]) |surface| {
-                    csdl.SDL_DestroySurface(surface);
+                    sdl.SDL_DestroySurface(surface);
                 }
                 return err;
             };
@@ -1068,30 +1070,30 @@ pub const FontAtlas = struct {
         }
         defer {
             for (surfaces) |surface| {
-                csdl.SDL_DestroySurface(surface);
+                sdl.SDL_DestroySurface(surface);
             }
         }
 
         const size: i32 = @intFromFloat(std.math.sqrt(@as(f32, @floatFromInt(texture_area))));
         const size_width = size + max_size.x;
         const size_height = size + max_size.y;
-        const atlas_surface = csdl.SDL_CreateSurface(size_width, size_height, csdl.SDL_PIXELFORMAT_RGBA8888);
+        const atlas_surface = sdl.SDL_CreateSurface(size_width, size_height, sdl.SDL_PIXELFORMAT_RGBA8888);
         if (atlas_surface == null) {
             return error.SDLCreateSurfaceFailed;
         }
-        defer csdl.SDL_DestroySurface(atlas_surface);
+        defer sdl.SDL_DestroySurface(atlas_surface);
 
         var offset: math.vec.Vec2(i32) = .{ .x = 0, .y = 0 };
         var atlas_rects: [END + 1]math.rect.Rect2(f32) = undefined;
         var index = BEGIN;
         for (surfaces) |src_surface| {
-            const dst_rect: csdl.SDL_Rect = .{
+            const dst_rect: sdl.SDL_Rect = .{
                 .x = offset.x,
                 .y = offset.y,
                 .w = src_surface.*.w,
                 .h = src_surface.*.h,
             };
-            if (!csdl.SDL_BlitSurface(src_surface, null, atlas_surface, &dst_rect)) {
+            if (!sdl.SDL_BlitSurface(src_surface, null, atlas_surface, &dst_rect)) {
                 return error.SDLBlitSurfaceFailed;
             }
             offset.x += src_surface.*.w;
@@ -1112,8 +1114,8 @@ pub const FontAtlas = struct {
             );
         }
 
-        const atlas_texture = sdl.Texture.init_from_surface(atlas_surface, renderer) catch |err| {
-            csdl.SDL_DestroySurface(atlas_surface);
+        const atlas_texture = Texture.init_from_surface(atlas_surface, renderer) catch |err| {
+            sdl.SDL_DestroySurface(atlas_surface);
             return err;
         };
         return .{
