@@ -170,6 +170,12 @@ pub const RenderEngine = struct {
         }
     }
 
+    pub fn getTextWidth(self: *RenderEngine, text: [:0]const u8) !i32 {
+        var tmp = try self.font_ui.renderTextTexture(text, self.font_color, self.renderer);
+        defer tmp.texture.deinit();
+        return @intCast(tmp.size.x);
+    }
+
     pub fn drawText(self: *RenderEngine, text: [:0]const u8, location: math.vec.Vec2(f32)) !void {
         var tmp = try self.font_ui.renderTextTexture(text, self.font_color, self.renderer);
         defer tmp.texture.deinit();

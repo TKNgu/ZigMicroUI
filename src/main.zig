@@ -32,28 +32,29 @@ const LogBuf = struct {
     }
 };
 
+var render_engine: graphic.render.RenderEngine = undefined;
+
 fn textWidth(_: c_microui.mu_Font, text: [*c]const u8, len: c_int) callconv(.c) c_int {
-    var tmp = len;
-    if (tmp == -1) {
-        tmp = @intCast(std.mem.len(text));
+    if (len < 0) {
+        var p: [*c]u8 = @constCast(text);
+        var size: usize = 0;
+        while (p.* != 0) : (p += 1) {
+            size += 1;
+        }
+        var s: [:0]u8 = undefined;
+        s.ptr = @constCast(text);
+        s.len = size;
+        return render_engine.getTextWidth(s) catch 0;
+    } else {
+        var s: [:0]u8 = undefined;
+        s.ptr = @constCast(text);
+        s.len = @as(usize, @intCast(len));
+        return render_engine.getTextWidth(s) catch 0;
     }
-    return 18 * len;
-    // return c_microui.r_get_text_width(text, tmp);
-    // int r_get_text_width(const char* text, int len) {
-    //   int res = 0;
-    //   for (const char* p = text; *p && len--; p++) {
-    //     if ((*p & 0xc0) == 0x80) {
-    //       continue;
-    //     }
-    //     int chr = mu_min((unsigned char)*p, 127);
-    //     res += atlas[ATLAS_FONT + chr].w;
-    //   }
-    //   return res;
-    // }
 }
 
 fn textHeight(_: c_microui.mu_Font) callconv(.c) c_int {
-    return 18;
+    return 22;
 }
 
 fn uint8Slider(ctx: [*c]c_microui.mu_Context, value: *u8, low: i32, high: i32) i32 {
@@ -172,7 +173,7 @@ fn testWindow(ctx: [*c]c_microui.mu_Context) void {
 
         // labels + buttons
         if (c_microui.mu_header_ex(ctx, "Test Buttons", c_microui.MU_OPT_EXPANDED) != 0) {
-            c_microui.mu_layout_row(ctx, 3, ([_]i32{ 86, -110, -1 })[0..], 0);
+            c_microui.mu_layout_row(ctx, 3, ([_]i32{ 160, -110, -1 })[0..], 0);
             c_microui.mu_label(ctx, "Test buttons 1:");
             if (c_microui.mu_button(ctx, "Button 1") != 0) {
                 logbuf.write("Pressed button 1");
@@ -358,7 +359,7 @@ pub fn main(init: std.process.Init) !void {
         .b = 230,
         .a = 255,
     };
-    var render_engine = try render.RenderEngine.init(&z_render, "data/JetBrainsMono-Bold.ttf", 16, text_color);
+    render_engine = try render.RenderEngine.init(&z_render, "data/JetBrainsMono-Bold.ttf", 16, text_color);
     defer render_engine.deinit();
 
     // Init microui
@@ -456,9 +457,14 @@ pub fn main(init: std.process.Init) !void {
         while (c_microui.mu_next_command(ctx, &cmd) != 0) {
             const cmd_type = cmd.*.type;
             if (cmd_type == c_microui.MU_COMMAND_TEXT) {
+                var s: [:0]u8 = @ptrCast(&(cmd.*.text.str[0]));
+                var p: [*c]u8 = &(cmd.*.text.str[0]);
+                while (p.* != 0) : (p += 1) {
+                    s.len += 1;
+                }
+                s.len -= 1;
                 const rect = cmd.*.text.pos;
-                const text = cmd.*.text.str;
-                render_engine.drawChar(text[0], math.vec.Vec2(f32).init(
+                render_engine.drawText(s, math.vec.Vec2(f32).init(
                     @as(f32, @floatFromInt(rect.x)),
                     @as(f32, @floatFromInt(rect.y)),
                 )) catch {};
@@ -495,76 +501,5 @@ pub fn main(init: std.process.Init) !void {
         }
 
         sdl.SDL_Delay(16);
-    }
-}
-
-pub fn back(init: std.process.Init) !void {
-    const allocator = init.gpa;
-
-    _ = c_microui.SDL_Init(c_microui.SDL_INIT_EVERYTHING);
-    c_microui.r_init();
-
-    const ctx = try allocator.create(c_microui.mu_Context);
-    defer allocator.destroy(ctx);
-
-    c_microui.mu_init(ctx);
-    ctx.*.text_width = textWidth;
-    ctx.*.text_height = textHeight;
-
-    var is_running = true;
-    while (is_running) {
-        var event: c_microui.SDL_Event = undefined;
-        while (c_microui.SDL_PollEvent(&event) != 0) {
-            switch (event.type) {
-                c_microui.SDL_QUIT => is_running = false,
-                c_microui.SDL_MOUSEMOTION => c_microui.mu_input_mousemove(ctx, event.motion.x, event.motion.y),
-                c_microui.SDL_MOUSEWHEEL => c_microui.mu_input_scroll(ctx, 0, event.wheel.y * -30),
-                c_microui.SDL_TEXTINPUT => c_microui.mu_input_text(ctx, &event.text.text),
-                c_microui.SDL_MOUSEBUTTONDOWN, c_microui.SDL_MOUSEBUTTONUP => {
-                    const btn = button_map[event.button.button & 0xff];
-                    if (btn != 0 and event.type == c_microui.SDL_MOUSEBUTTONDOWN) {
-                        c_microui.mu_input_mousedown(ctx, event.button.x, event.button.y, btn);
-                    }
-                    if (btn != 0 and event.type == c_microui.SDL_MOUSEBUTTONUP) {
-                        c_microui.mu_input_mouseup(ctx, event.button.x, event.button.y, btn);
-                    }
-                },
-                c_microui.SDL_KEYDOWN, c_microui.SDL_KEYUP => {
-                    const index = event.key.keysym.sym & 0xff;
-                    const key = key_map[@as(usize, @intCast(index))];
-                    if (key != 0 and event.type == c_microui.SDL_KEYDOWN) {
-                        std.debug.print("Key down\n", .{});
-                        c_microui.mu_input_keydown(ctx, key);
-                    }
-                    if (key != 0 and event.type == c_microui.SDL_KEYUP) {
-                        std.debug.print("Key up\n", .{});
-                        c_microui.mu_input_keyup(ctx, key);
-                    }
-                },
-                else => {},
-            }
-        }
-
-        processFrame(ctx);
-        c_microui.r_clear(c_microui.mu_color(
-            @as(i32, @intFromFloat(bg[0])),
-            @as(i32, @intFromFloat(bg[1])),
-            @as(i32, @intFromFloat(bg[2])),
-            255,
-        ));
-        var cmd: [*c]c_microui.mu_Command = null;
-        while (c_microui.mu_next_command(ctx, &cmd) != 0) {
-            const cmd_type = cmd.*.type;
-            if (cmd_type == c_microui.MU_COMMAND_TEXT) {
-                c_microui.r_draw_text(&cmd.*.text.str[0], cmd.*.text.pos, cmd.*.text.color);
-            } else if (cmd_type == c_microui.MU_COMMAND_RECT) {
-                c_microui.r_draw_rect(cmd.*.rect.rect, cmd.*.rect.color);
-            } else if (cmd_type == c_microui.MU_COMMAND_ICON) {
-                c_microui.r_draw_icon(cmd.*.icon.id, cmd.*.icon.rect, cmd.*.icon.color);
-            } else if (cmd_type == c_microui.MU_COMMAND_CLIP) {
-                c_microui.r_set_clip_rect(cmd.*.clip.rect);
-            }
-        }
-        c_microui.r_present();
     }
 }
