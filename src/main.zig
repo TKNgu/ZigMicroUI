@@ -173,7 +173,7 @@ fn testWindow(ctx: [*c]c_microui.mu_Context) void {
 
         // labels + buttons
         if (c_microui.mu_header_ex(ctx, "Test Buttons", c_microui.MU_OPT_EXPANDED) != 0) {
-            c_microui.mu_layout_row(ctx, 3, ([_]i32{ 160, -110, -1 })[0..], 0);
+            c_microui.mu_layout_row(ctx, 3, ([_]i32{ 140, -110, -1 })[0..], 0);
             c_microui.mu_label(ctx, "Test buttons 1:");
             if (c_microui.mu_button(ctx, "Button 1") != 0) {
                 logbuf.write("Pressed button 1");
@@ -202,7 +202,7 @@ fn testWindow(ctx: [*c]c_microui.mu_Context) void {
 
         // tree
         if (c_microui.mu_header_ex(ctx, "Tree and Text", c_microui.MU_OPT_EXPANDED) != 0) {
-            c_microui.mu_layout_row(ctx, 2, ([_]i32{ 140, -1 })[0..], 0);
+            c_microui.mu_layout_row(ctx, 2, ([_]i32{ 160, -1 })[0..], 0);
             {
                 c_microui.mu_layout_begin_column(ctx);
                 defer c_microui.mu_layout_end_column(ctx);
@@ -286,7 +286,7 @@ fn testWindow(ctx: [*c]c_microui.mu_Context) void {
                     @floatFromInt(color.b),
                 };
 
-                c_microui.mu_layout_row(ctx, 2, ([_]i32{ 46, -1 })[0..], 0);
+                c_microui.mu_layout_row(ctx, 2, ([_]i32{ 60, -1 })[0..], 0);
                 c_microui.mu_label(ctx, "Red:");
                 _ = uint8Slider(ctx, &color.r, 0, 255);
                 c_microui.mu_label(ctx, "Green:");
@@ -359,7 +359,13 @@ pub fn main(init: std.process.Init) !void {
         .b = 230,
         .a = 255,
     };
-    render_engine = try render.RenderEngine.init(&z_render, "data/JetBrainsMono-Bold.ttf", 16, text_color);
+    render_engine = try render.RenderEngine.init(
+        allocator,
+        &z_render,
+        "data/JetBrainsMono-Bold.ttf",
+        16,
+        text_color,
+    );
     defer render_engine.deinit();
 
     // Init microui
@@ -483,7 +489,14 @@ pub fn main(init: std.process.Init) !void {
                     .a = color.a,
                 }) catch {};
             } else if (cmd_type == c_microui.MU_COMMAND_ICON) {
-                // std.debug.print("Icon: \n", .{});
+                const rect = cmd.*.icon.rect;
+                const id: usize = @intCast(cmd.*.icon.id);
+                render_engine.drawIcon(id, math.rect.Rect2(f32).init(
+                    @as(f32, @floatFromInt(rect.x)),
+                    @as(f32, @floatFromInt(rect.y)),
+                    @as(f32, @floatFromInt(rect.w)),
+                    @as(f32, @floatFromInt(rect.h)),
+                )) catch {};
             } else if (cmd_type == c_microui.MU_COMMAND_CLIP) {
                 const rect = cmd.*.clip.rect;
                 _ = z_render.clip(math.rect.Rect2(f32).init(

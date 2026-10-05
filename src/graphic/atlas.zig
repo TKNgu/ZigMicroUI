@@ -908,8 +908,8 @@ pub fn getBitmap(allocator: std.mem.Allocator) ![]u8 {
             const value = ATLAS_TEXTURE[index];
             if (value != 0) {
                 bitmap[index * 3 + 0] = 255;
-                bitmap[index * 3 + 1] = 0;
-                bitmap[index * 3 + 2] = 0;
+                bitmap[index * 3 + 1] = 255;
+                bitmap[index * 3 + 2] = 255;
             } else {
                 bitmap[index * 3 + 0] = 0;
                 bitmap[index * 3 + 1] = 0;
@@ -931,6 +931,11 @@ pub const ICON = struct {
 
 pub const ATLAS_FONT: [128]math.rect.Rect2(f32) = TABLE: {
     var table: [128]math.rect.Rect2(f32) = undefined;
+
+    table[1] = ICON.CLOSE;
+    table[2] = ICON.CHECK;
+    table[3] = ICON.EXPANDED;
+    table[4] = ICON.COLLAPSED;
 
     table[32] = math.rect.Rect2(f32).init(84, 68, 2, 17);
     table[33] = math.rect.Rect2(f32).init(39, 68, 3, 17);
@@ -1129,7 +1134,7 @@ pub const FontAtlas = struct {
         self.atlas_texture.deinit();
     }
 
-    pub fn renderChar(self: *FontAtlas, renderer: *sdl.Renderer, char: u8, dst_location: ?math.vec.Vec2(f32)) !void {
+    pub fn renderChar(self: *FontAtlas, renderer: *Renderer, char: u8, dst_location: ?math.vec.Vec2(f32)) !void {
         if (char < BEGIN or char > END) {
             return error.InvalidChar;
         }

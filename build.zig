@@ -30,7 +30,7 @@ pub fn build(b: *std.Build) void {
 
     // microui.c
     const c_translate_c = b.addTranslateC(.{
-        .root_source_file = b.path("src/microui/main.h"),
+        .root_source_file = b.path("src/microui/microui.h"),
         .target = target,
         .optimize = optimize,
     });

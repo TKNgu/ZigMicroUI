@@ -3,6 +3,7 @@ const math = @import("math.zig");
 const sdl = @import("sdl.zig").sdl;
 const Renderer = @import("sdl.zig").Renderer;
 const Font = @import("sdl.zig").Font;
+const Texture = @import("sdl.zig").Texture;
 const color = @import("color.zig");
 const atlas = @import("atlas.zig");
 
@@ -11,8 +12,10 @@ pub const RenderEngine = struct {
     font_ui: Font,
     font_color: color.Color,
     font_atlas: atlas.FontAtlas,
+    texture: Texture,
 
     pub fn init(
+        allocator: std.mem.Allocator,
         renderer: *Renderer,
         font_path: [:0]const u8,
         size: f32,
@@ -20,22 +23,30 @@ pub const RenderEngine = struct {
     ) !RenderEngine {
         var font_ui = try Font.init(font_path, size);
         const font_atlas = try atlas.FontAtlas.init(&font_ui, font_color, renderer);
+
+        const texture = try loadTexture(allocator, renderer.renderer);
+        errdefer sdl.SDL_DestroyTexture(texture);
+
         return .{
             .renderer = renderer,
             .font_ui = font_ui,
             .font_color = font_color,
             .font_atlas = font_atlas,
+            .texture = .{
+                .texture = texture,
+            },
         };
     }
 
     pub fn deinit(self: *RenderEngine) void {
         self.font_ui.deinit();
         self.font_atlas.deinit();
+        self.texture.deinit();
     }
 
     fn loadTexture(
-        renderer: *sdl.SDL_Renderer,
         allocator: std.mem.Allocator,
+        renderer: *sdl.SDL_Renderer,
     ) !*sdl.SDL_Texture {
         const bitmap = try atlas.getBitmap(allocator);
         defer allocator.free(bitmap);
@@ -120,18 +131,6 @@ pub const RenderEngine = struct {
         }
     }
 
-    pub fn drawTextureTest(self: *RenderEngine) !void {
-        const dst_rect: sdl.SDL_FRect = .{
-            .x = 0,
-            .y = 0,
-            .w = atlas.ATLAS_WIDTH,
-            .h = atlas.ATLAS_HEIGHT,
-        };
-        if (!sdl.SDL_RenderTexture(self.renderer.renderer, self.texture, null, &dst_rect)) {
-            return error.RenderError;
-        }
-    }
-
     pub fn drawTexture(
         self: *RenderEngine,
         texture: *sdl.SDL_Texture,
@@ -171,22 +170,21 @@ pub const RenderEngine = struct {
     }
 
     pub fn getTextWidth(self: *RenderEngine, text: [:0]const u8) !i32 {
-        var tmp = try self.font_ui.renderTextTexture(text, self.font_color, self.renderer);
-        defer tmp.texture.deinit();
-        return @intCast(tmp.size.x);
+        var width: i32 = 0;
+        for (text) |c| {
+            const char_rect = try self.font_atlas.getCharSize(c);
+            width += @intFromFloat(char_rect.x);
+        }
+        return width;
     }
 
     pub fn drawText(self: *RenderEngine, text: [:0]const u8, location: math.vec.Vec2(f32)) !void {
-        var tmp = try self.font_ui.renderTextTexture(text, self.font_color, self.renderer);
-        defer tmp.texture.deinit();
-        const text_size = tmp.size;
-        try tmp.texture.render(self.renderer, null, math.rect.Rect2(f32).initVec(
-            math.vec.Vec2(f32).init(location.x, location.y),
-            math.vec.Vec2(f32).init(
-                @floatFromInt(text_size.x),
-                @floatFromInt(text_size.y),
-            ),
-        ));
+        var offset = location;
+        for (text) |c| {
+            try self.font_atlas.renderChar(self.renderer, c, offset);
+            const char_rect = try self.font_atlas.getCharSize(c);
+            offset.x += char_rect.x;
+        }
     }
 
     pub fn drawChar(self: *RenderEngine, char: u8, location: math.vec.Vec2(f32)) !void {
@@ -201,5 +199,21 @@ pub const RenderEngine = struct {
                 @floatFromInt(text_size.y),
             ),
         ));
+    }
+
+    pub fn drawIcon(self: *RenderEngine, id: usize, dst_rect: math.rect.Rect2(f32)) !void {
+        const src_rect = atlas.ATLAS_FONT[id];
+        const x = dst_rect.pos.x + (dst_rect.size.x - src_rect.size.x) / 2;
+        const y = dst_rect.pos.y + (dst_rect.size.y - src_rect.size.y) / 2;
+        return self.texture.render(
+            self.renderer,
+            src_rect,
+            math.rect.Rect2(f32).initVec(math.vec.Vec2(f32).init(x, y), src_rect.size),
+        );
+    }
+
+    pub fn drawIconTest(self: *RenderEngine) !void {
+        const src_rect = atlas.ICON.CLOSE;
+        return self.texture.render(self.renderer, src_rect, null);
     }
 };
