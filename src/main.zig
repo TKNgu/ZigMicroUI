@@ -7,6 +7,8 @@ const render = graphic.render;
 const style = @import("style.zig");
 const math = graphic.math;
 
+extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
+
 var button_map: [256]u8 = [_]u8{0} ** 256;
 var key_map: [256]u8 = [_]u8{0} ** 256;
 var logbuf = LogBuf.init();
@@ -320,6 +322,8 @@ fn processFrame(ctx: [*c]c_microui.mu_Context) void {
 }
 
 pub fn main(init: std.process.Init) !void {
+    _ = setenv("XKB_LOG_LEVEL", "critical", 1); // fix xkbcommon warnings on wayland
+
     const allocator = init.gpa;
 
     // Init SDL
@@ -332,11 +336,12 @@ pub fn main(init: std.process.Init) !void {
     const windowHeight: i32 = 640;
     var windowOption: ?*sdl.SDL_Window = null;
     var renderOption: ?*sdl.SDL_Renderer = null;
+    // sdl.SDL_WINDOW_VULKAN,
     if (!sdl.SDL_CreateWindowAndRenderer(
         "TheGame",
         windowWidth,
         windowHeight,
-        sdl.SDL_WINDOW_VULKAN,
+        0, // fix SDL vulkan wayland crash in IDE
         &windowOption,
         &renderOption,
     )) {
