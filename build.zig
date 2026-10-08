@@ -62,11 +62,13 @@ pub fn build(b: *std.Build) void {
     });
 
     // build libc
-    std.Io.Dir.cwd().access(b.*.graph.*.io, "lib/local", .{}) catch {
+    const deps_exist = if (std.Io.Dir.cwd().access(b.*.graph.*.io, "lib/local/lib/libSDL3.a", .{})) |_| true else |_| false;
+
+    if (!deps_exist) {
         const cmake_configure_libc = b.addSystemCommand(&.{
             "cmake",
-            "-S .",
-            "-B lib/build",
+            "-S", ".",
+            "-B", "lib/build",
             "-DCMAKE_INSTALL_PREFIX=lib/local/",
             "-DCMAKE_INSTALL_LIBDIR=lib",
             "-DCMAKE_BUILD_TYPE=Release",
@@ -74,7 +76,7 @@ pub fn build(b: *std.Build) void {
         const cmake_build_libc = b.addSystemCommand(&.{ "cmake", "--build", "lib/build", "-j4" });
         cmake_build_libc.step.dependOn(&cmake_configure_libc.step);
         exe.step.dependOn(&cmake_build_libc.step);
-    };
+    }
 
     b.installArtifact(exe);
     const run_cmd = b.addRunArtifact(exe);

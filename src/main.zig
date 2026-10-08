@@ -336,10 +336,11 @@ pub fn main(init: std.process.Init) !void {
         "TheGame",
         windowWidth,
         windowHeight,
-        sdl.SDL_WINDOW_VULKAN,
+        0, // Try 0 instead of sdl.SDL_WINDOW_VULKAN
         &windowOption,
         &renderOption,
     )) {
+        std.debug.print("SDL Error: {s}\n", .{sdl.SDL_GetError()});
         return error.SDLCreateWindowAndRendererFailed;
     }
 
