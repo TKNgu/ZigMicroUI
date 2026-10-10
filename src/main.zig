@@ -7,6 +7,8 @@ const render = graphic.render;
 const style = @import("style.zig");
 const math = graphic.math;
 
+const MicroUI = @import("microui/microui.zig").MicroUI;
+
 var button_map: [256]u8 = [_]u8{0} ** 256;
 var key_map: [256]u8 = [_]u8{0} ** 256;
 var logbuf = LogBuf.init();
@@ -74,7 +76,7 @@ fn uint8Slider(ctx: [*c]c_microui.mu_Context, value: *u8, low: i32, high: i32) i
     return res;
 }
 
-fn styleWindow(ctx: [*c]c_microui.mu_Context) void {
+fn styleWindow(ctx: [*c]c_microui.mu_Context, microui: *MicroUI) !void {
     const Color = struct {
         label: [:0]const u8,
         idx: usize,
@@ -95,228 +97,225 @@ fn styleWindow(ctx: [*c]c_microui.mu_Context) void {
         .{ .label = "scrollbase", .idx = c_microui.MU_COLOR_SCROLLBASE },
         .{ .label = "scrollthumb", .idx = c_microui.MU_COLOR_SCROLLTHUMB },
     };
-    if (c_microui.mu_begin_window(ctx, "Style Editor", c_microui.mu_rect(350, 250, 300, 240)) != 0) {
-        defer c_microui.mu_end_window(ctx);
-        const size_width: i32 =
-            @intFromFloat(@as(f32, @floatFromInt(c_microui.mu_get_current_container(ctx).*.body.w)) * 0.14);
-        c_microui.mu_layout_row(ctx, 6, ([_]i32{ 80, size_width, size_width, size_width, size_width, -1 })[0..], 0);
+    try microui.beginWindow("Style Editor", c_microui.mu_rect(350, 250, 300, 240));
+    defer microui.endWindow();
 
-        var ctx_colors = ctx.*.style.*.colors[0..];
-        for (colors, 0..) |color, index| {
-            c_microui.mu_label(ctx, color.label);
-            _ = uint8Slider(ctx, &ctx_colors[index].r, 0, 255);
-            _ = uint8Slider(ctx, &ctx_colors[index].g, 0, 255);
-            _ = uint8Slider(ctx, &ctx_colors[index].b, 0, 255);
-            _ = uint8Slider(ctx, &ctx_colors[index].a, 0, 255);
-            c_microui.mu_draw_rect(ctx, c_microui.mu_layout_next(ctx), ctx_colors[index]);
-        }
+    const size_width: i32 =
+        @intFromFloat(@as(f32, @floatFromInt(microui.getCurrentContainer().*.body.w)) * 0.14);
+    microui.layoutRow(&[_]i32{ 80, size_width, size_width, size_width, size_width, -1 }, 0);
+
+    var ctx_colors = ctx.*.style.*.colors[0..];
+    for (colors, 0..) |color, index| {
+        microui.drawLabel(color.label);
+        _ = uint8Slider(ctx, &ctx_colors[index].r, 0, 255);
+        _ = uint8Slider(ctx, &ctx_colors[index].g, 0, 255);
+        _ = uint8Slider(ctx, &ctx_colors[index].b, 0, 255);
+        _ = uint8Slider(ctx, &ctx_colors[index].a, 0, 255);
+        microui.drawRect(c_microui.mu_layout_next(ctx), ctx_colors[index]);
     }
 }
 
-fn logWindow(ctx: [*c]c_microui.mu_Context) void {
-    if (c_microui.mu_begin_window(ctx, "Log Window", c_microui.mu_rect(350, 40, 300, 200)) != 0) {
-        defer c_microui.mu_end_window(ctx);
+fn logWindow(microui: *MicroUI) !void {
+    try microui.beginWindow("Log Window", c_microui.mu_rect(350, 40, 300, 200));
+    defer microui.endWindow();
 
-        c_microui.mu_layout_row(ctx, 1, ([_]i32{-1})[0..], -25);
+    microui.layoutRow(&[_]i32{-1}, -25);
+    {
+        microui.beginPanel("Log Output");
+        defer microui.endPanel();
+
+        const panel = microui.getCurrentContainer();
+        if (logbuf.updated) {
+            panel.*.scroll.y = panel.*.content_size.y;
+            logbuf.updated = true;
+        }
+
+        microui.layoutRow(&[_]i32{-1}, -1);
+        microui.drawText(&logbuf.buf);
+    }
+
+    var buf: [128:0]u8 = undefined;
+    buf[0] = 0;
+    var submitted: i32 = 0;
+    microui.layoutRow(&[_]i32{ -70, -1 }, 0);
+    if (microui.drawTextBox(buf[0..128]) & c_microui.MU_RES_SUBMIT != 0) {
+        submitted = 1;
+    }
+    if (microui.drawButton("Submit") != 0) {
+        submitted = 1;
+    }
+    if (submitted != 0) {
+        logbuf.write(&buf);
+        buf[0] = 0;
+    }
+}
+
+fn testWindow(ctx: [*c]c_microui.mu_Context, microui: *MicroUI) !void {
+    try microui.beginWindow("Test Window", c_microui.mu_rect(40, 40, 300, 450));
+    defer microui.endWindow();
+
+    var win = microui.getCurrentContainer();
+    win.*.rect.w = c_microui.mu_max(win.*.rect.w, 240);
+    win.*.rect.h = c_microui.mu_max(win.*.rect.h, 300);
+
+    // window info
+    if (c_microui.mu_header(ctx, "Window Info") != 0) {
+        win = microui.getCurrentContainer();
+        var buf: [64]u8 = undefined;
+        microui.layoutRow(&[_]i32{ 54, -1 }, 0);
+        c_microui.mu_label(ctx, "Position:");
+        var tmp = std.fmt.bufPrintSentinel(&buf, "{d}, {d}", .{ win.*.rect.x, win.*.rect.y }, 0) catch unreachable;
+        c_microui.mu_label(ctx, &tmp[0]);
+        c_microui.mu_label(ctx, "Size:");
+        tmp = std.fmt.bufPrintSentinel(&buf, "{d}, {d}", .{ win.*.rect.w, win.*.rect.h }, 0) catch unreachable;
+        c_microui.mu_label(ctx, &tmp[0]);
+    }
+
+    // labels + buttons
+    if (c_microui.mu_header_ex(ctx, "Test Buttons", c_microui.MU_OPT_EXPANDED) != 0) {
+        microui.layoutRow(&[_]i32{ 140, -110, -1 }, 0);
+        c_microui.mu_label(ctx, "Test buttons 1:");
+        if (c_microui.mu_button(ctx, "Button 1") != 0) {
+            logbuf.write("Pressed button 1");
+        }
+        if (c_microui.mu_button(ctx, "Button 2") != 0) {
+            logbuf.write("Pressed button 2");
+        }
+        c_microui.mu_label(ctx, "Test buttons 2:");
+        if (c_microui.mu_button(ctx, "Button 3") != 0) {
+            logbuf.write("Pressed button 3");
+        }
+        if (c_microui.mu_button(ctx, "Popup") != 0) {
+            c_microui.mu_open_popup(ctx, "Test Popup");
+        }
+        if (c_microui.mu_begin_popup(ctx, "Test Popup") != 0) {
+            defer c_microui.mu_end_popup(ctx);
+
+            if (c_microui.mu_button(ctx, "Hello") != 0) {
+                logbuf.write("Hello");
+            }
+            if (c_microui.mu_button(ctx, "World") != 0) {
+                logbuf.write("World");
+            }
+        }
+    }
+
+    // tree
+    if (c_microui.mu_header_ex(ctx, "Tree and Text", c_microui.MU_OPT_EXPANDED) != 0) {
+        microui.layoutRow(&[_]i32{ 160, -1 }, 0);
+        {
+            c_microui.mu_layout_begin_column(ctx);
+            defer c_microui.mu_layout_end_column(ctx);
+
+            if (c_microui.mu_begin_treenode(ctx, "Test 1") != 0) {
+                defer c_microui.mu_end_treenode(ctx);
+
+                if (c_microui.mu_begin_treenode(ctx, "Test 1a") != 0) {
+                    defer c_microui.mu_end_treenode(ctx);
+
+                    c_microui.mu_label(ctx, "Hello");
+                    c_microui.mu_label(ctx, "world");
+                }
+                if (c_microui.mu_begin_treenode(ctx, "Test 1b") != 0) {
+                    defer c_microui.mu_end_treenode(ctx);
+
+                    if (c_microui.mu_button(ctx, "Button 1") != 0) {
+                        logbuf.write("Pressed button 1");
+                    }
+                    if (c_microui.mu_button(ctx, "Button 2") != 0) {
+                        logbuf.write("Pressed button 2");
+                    }
+                }
+            }
+            if (c_microui.mu_begin_treenode(ctx, "Test 2") != 0) {
+                defer c_microui.mu_end_treenode(ctx);
+
+                microui.layoutRow(&[_]i32{ 54, 54 }, 0);
+                if (c_microui.mu_button(ctx, "Button 3") != 0) {
+                    logbuf.write("Pressed button 3");
+                }
+                if (c_microui.mu_button(ctx, "Button 4") != 0) {
+                    logbuf.write("Pressed button 4");
+                }
+                if (c_microui.mu_button(ctx, "Button 5") != 0) {
+                    logbuf.write("Pressed button 5");
+                }
+                if (c_microui.mu_button(ctx, "Button 6") != 0) {
+                    logbuf.write("Pressed button 6");
+                }
+            }
+            if (c_microui.mu_begin_treenode(ctx, "Test 3") != 0) {
+                defer c_microui.mu_end_treenode(ctx);
+
+                _ = c_microui.mu_checkbox(ctx, "Checkbox 1", &checks[0]);
+                _ = c_microui.mu_checkbox(ctx, "Checkbox 2", &checks[1]);
+                _ = c_microui.mu_checkbox(ctx, "Checkbox 3", &checks[2]);
+            }
+        }
 
         {
-            c_microui.mu_begin_panel(ctx, "Log Output");
-            defer c_microui.mu_end_panel(ctx);
+            c_microui.mu_layout_begin_column(ctx);
+            defer c_microui.mu_layout_end_column(ctx);
 
-            const panel = c_microui.mu_get_current_container(ctx);
-            if (logbuf.updated) {
-                panel.*.scroll.y = panel.*.content_size.y;
-                logbuf.updated = true;
-            }
-
-            c_microui.mu_layout_row(ctx, 1, ([_]i32{-1})[0..], -1);
-            c_microui.mu_text(ctx, &logbuf.buf);
-        }
-
-        var buf: [128:0]u8 = undefined;
-        buf[0] = 0;
-        var submitted: i32 = 0;
-        c_microui.mu_layout_row(ctx, 2, ([_]i32{ -70, -1 })[0..], 0);
-        if (c_microui.mu_textbox(ctx, &buf, 128) & c_microui.MU_RES_SUBMIT != 0) {
-            submitted = 1;
-        }
-        if (c_microui.mu_button(ctx, "Submit") != 0) {
-            submitted = 1;
-        }
-        if (submitted != 0) {
-            logbuf.write(&buf);
-            buf[0] = 0;
+            microui.layoutRow(&[_]i32{-1}, 0);
+            c_microui.mu_text(ctx,
+                \\ Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+                \\ Maecenas lacinia, sem eu lacinia molestie, 
+                \\ mi risus faucibus ipsum, eu varius magna felis a nulla.",
+            );
         }
     }
-}
 
-fn testWindow(ctx: [*c]c_microui.mu_Context) void {
-    if (c_microui.mu_begin_window(ctx, "Test Window", c_microui.mu_rect(40, 40, 300, 450)) != 0) {
-        defer c_microui.mu_end_window(ctx);
+    // background color sliders
+    if (c_microui.mu_header_ex(ctx, "Background Color", c_microui.MU_OPT_EXPANDED) != 0) {
+        microui.layoutRow(&[_]i32{ -78, -1 }, 74);
+        // sliders
+        {
+            c_microui.mu_layout_begin_column(ctx);
+            defer c_microui.mu_layout_end_column(ctx);
 
-        var win = c_microui.mu_get_current_container(ctx);
-        win.*.rect.w = c_microui.mu_max(win.*.rect.w, 240);
-        win.*.rect.h = c_microui.mu_max(win.*.rect.h, 300);
-
-        // window info
-        if (c_microui.mu_header(ctx, "Window Info") != 0) {
-            win = c_microui.mu_get_current_container(ctx);
-            var buf: [64]u8 = undefined;
-            c_microui.mu_layout_row(ctx, 2, ([2]i32{ 54, -1 })[0..], 0);
-            c_microui.mu_label(ctx, "Position:");
-            var tmp = std.fmt.bufPrintSentinel(&buf, "{d}, {d}", .{ win.*.rect.x, win.*.rect.y }, 0) catch unreachable;
-            c_microui.mu_label(ctx, &tmp[0]);
-            c_microui.mu_label(ctx, "Size:");
-            tmp = std.fmt.bufPrintSentinel(&buf, "{d}, {d}", .{ win.*.rect.w, win.*.rect.h }, 0) catch unreachable;
-            c_microui.mu_label(ctx, &tmp[0]);
-        }
-
-        // labels + buttons
-        if (c_microui.mu_header_ex(ctx, "Test Buttons", c_microui.MU_OPT_EXPANDED) != 0) {
-            c_microui.mu_layout_row(ctx, 3, ([_]i32{ 140, -110, -1 })[0..], 0);
-            c_microui.mu_label(ctx, "Test buttons 1:");
-            if (c_microui.mu_button(ctx, "Button 1") != 0) {
-                logbuf.write("Pressed button 1");
-            }
-            if (c_microui.mu_button(ctx, "Button 2") != 0) {
-                logbuf.write("Pressed button 2");
-            }
-            c_microui.mu_label(ctx, "Test buttons 2:");
-            if (c_microui.mu_button(ctx, "Button 3") != 0) {
-                logbuf.write("Pressed button 3");
-            }
-            if (c_microui.mu_button(ctx, "Popup") != 0) {
-                c_microui.mu_open_popup(ctx, "Test Popup");
-            }
-            if (c_microui.mu_begin_popup(ctx, "Test Popup") != 0) {
-                defer c_microui.mu_end_popup(ctx);
-
-                if (c_microui.mu_button(ctx, "Hello") != 0) {
-                    logbuf.write("Hello");
-                }
-                if (c_microui.mu_button(ctx, "World") != 0) {
-                    logbuf.write("World");
-                }
-            }
-        }
-
-        // tree
-        if (c_microui.mu_header_ex(ctx, "Tree and Text", c_microui.MU_OPT_EXPANDED) != 0) {
-            c_microui.mu_layout_row(ctx, 2, ([_]i32{ 160, -1 })[0..], 0);
-            {
-                c_microui.mu_layout_begin_column(ctx);
-                defer c_microui.mu_layout_end_column(ctx);
-
-                if (c_microui.mu_begin_treenode(ctx, "Test 1") != 0) {
-                    defer c_microui.mu_end_treenode(ctx);
-
-                    if (c_microui.mu_begin_treenode(ctx, "Test 1a") != 0) {
-                        defer c_microui.mu_end_treenode(ctx);
-
-                        c_microui.mu_label(ctx, "Hello");
-                        c_microui.mu_label(ctx, "world");
-                    }
-                    if (c_microui.mu_begin_treenode(ctx, "Test 1b") != 0) {
-                        defer c_microui.mu_end_treenode(ctx);
-
-                        if (c_microui.mu_button(ctx, "Button 1") != 0) {
-                            logbuf.write("Pressed button 1");
-                        }
-                        if (c_microui.mu_button(ctx, "Button 2") != 0) {
-                            logbuf.write("Pressed button 2");
-                        }
-                    }
-                }
-                if (c_microui.mu_begin_treenode(ctx, "Test 2") != 0) {
-                    defer c_microui.mu_end_treenode(ctx);
-
-                    c_microui.mu_layout_row(ctx, 2, ([_]i32{ 54, 54 })[0..], 0);
-                    if (c_microui.mu_button(ctx, "Button 3") != 0) {
-                        logbuf.write("Pressed button 3");
-                    }
-                    if (c_microui.mu_button(ctx, "Button 4") != 0) {
-                        logbuf.write("Pressed button 4");
-                    }
-                    if (c_microui.mu_button(ctx, "Button 5") != 0) {
-                        logbuf.write("Pressed button 5");
-                    }
-                    if (c_microui.mu_button(ctx, "Button 6") != 0) {
-                        logbuf.write("Pressed button 6");
-                    }
-                }
-                if (c_microui.mu_begin_treenode(ctx, "Test 3") != 0) {
-                    defer c_microui.mu_end_treenode(ctx);
-
-                    _ = c_microui.mu_checkbox(ctx, "Checkbox 1", &checks[0]);
-                    _ = c_microui.mu_checkbox(ctx, "Checkbox 2", &checks[1]);
-                    _ = c_microui.mu_checkbox(ctx, "Checkbox 3", &checks[2]);
-                }
-            }
-
-            {
-                c_microui.mu_layout_begin_column(ctx);
-                defer c_microui.mu_layout_end_column(ctx);
-
-                c_microui.mu_layout_row(ctx, 1, ([_]i32{-1})[0..], 0);
-                c_microui.mu_text(ctx,
-                    \\ Lorem ipsum dolor sit amet, consectetur adipiscing elit.
-                    \\ Maecenas lacinia, sem eu lacinia molestie, 
-                    \\ mi risus faucibus ipsum, eu varius magna felis a nulla.",
-                );
-            }
-        }
-
-        // background color sliders
-        if (c_microui.mu_header_ex(ctx, "Background Color", c_microui.MU_OPT_EXPANDED) != 0) {
-            c_microui.mu_layout_row(ctx, 2, ([_]i32{ -78, -1 })[0..], 74);
-            // sliders
-            {
-                c_microui.mu_layout_begin_column(ctx);
-                defer c_microui.mu_layout_end_column(ctx);
-
-                var color: c_microui.mu_Color = .{
-                    .r = @intFromFloat(bg[0]),
-                    .g = @intFromFloat(bg[1]),
-                    .b = @intFromFloat(bg[2]),
-                    .a = 255,
-                };
-                defer bg = .{
-                    @floatFromInt(color.r),
-                    @floatFromInt(color.g),
-                    @floatFromInt(color.b),
-                };
-
-                c_microui.mu_layout_row(ctx, 2, ([_]i32{ 60, -1 })[0..], 0);
-                c_microui.mu_label(ctx, "Red:");
-                _ = uint8Slider(ctx, &color.r, 0, 255);
-                c_microui.mu_label(ctx, "Green:");
-                _ = uint8Slider(ctx, &color.g, 0, 255);
-                c_microui.mu_label(ctx, "Blue:");
-                _ = uint8Slider(ctx, &color.b, 0, 255);
-            }
-            // color preview
-            const rect = c_microui.mu_layout_next(ctx);
-            const color: c_microui.mu_Color = .{
+            var color: c_microui.mu_Color = .{
                 .r = @intFromFloat(bg[0]),
                 .g = @intFromFloat(bg[1]),
                 .b = @intFromFloat(bg[2]),
                 .a = 255,
             };
-            c_microui.mu_draw_rect(ctx, rect, color);
-            var buf: [32]u8 = undefined;
-            const view = std.fmt.bufPrintSentinel(&buf, "#{x:02}{x:02}{x:02}", .{ color.r, color.g, color.b }, 0) catch unreachable;
-            c_microui.mu_draw_control_text(ctx, view[0..], rect, c_microui.MU_COLOR_TEXT, c_microui.MU_OPT_ALIGNCENTER);
+            defer bg = .{
+                @floatFromInt(color.r),
+                @floatFromInt(color.g),
+                @floatFromInt(color.b),
+            };
+
+            microui.layoutRow(&[_]i32{ 60, -1 }, 0);
+            c_microui.mu_label(ctx, "Red:");
+            _ = uint8Slider(ctx, &color.r, 0, 255);
+            c_microui.mu_label(ctx, "Green:");
+            _ = uint8Slider(ctx, &color.g, 0, 255);
+            c_microui.mu_label(ctx, "Blue:");
+            _ = uint8Slider(ctx, &color.b, 0, 255);
         }
+        // color preview
+        const rect = c_microui.mu_layout_next(ctx);
+        const color: c_microui.mu_Color = .{
+            .r = @intFromFloat(bg[0]),
+            .g = @intFromFloat(bg[1]),
+            .b = @intFromFloat(bg[2]),
+            .a = 255,
+        };
+        microui.drawRect(rect, color);
+        var buf: [32]u8 = undefined;
+        const view = std.fmt.bufPrintSentinel(&buf, "#{x:02}{x:02}{x:02}", .{ color.r, color.g, color.b }, 0) catch unreachable;
+        c_microui.mu_draw_control_text(ctx, view[0..], rect, c_microui.MU_COLOR_TEXT, c_microui.MU_OPT_ALIGNCENTER);
     }
 }
 
-fn processFrame(ctx: [*c]c_microui.mu_Context) void {
+fn processFrame(ctx: [*c]c_microui.mu_Context, microui: *MicroUI) !void {
     c_microui.mu_begin(ctx);
     defer c_microui.mu_end(ctx);
 
-    styleWindow(ctx);
-    logWindow(ctx);
-    testWindow(ctx);
+    try styleWindow(ctx, microui);
+    try logWindow(microui);
+    try testWindow(ctx, microui);
 }
 
 pub fn main(init: std.process.Init) !void {
@@ -389,6 +388,8 @@ pub fn main(init: std.process.Init) !void {
     ctx.*.text_width = textWidth;
     ctx.*.text_height = textHeight;
 
+    var microui = MicroUI.init(ctx);
+
     // Main loop
     var is_running = true;
     while (is_running) {
@@ -442,7 +443,7 @@ pub fn main(init: std.process.Init) !void {
             }
         }
 
-        processFrame(ctx);
+        try processFrame(ctx, &microui);
 
         if (!sdl.SDL_SetRenderDrawColor(
             renderer,
