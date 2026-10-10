@@ -29,17 +29,17 @@ pub fn build(b: *std.Build) void {
     graphic.linkSystemLibrary("c", .{});
 
     // microui.c
-    const c_translate_c = b.addTranslateC(.{
+    const c_microui_translate_c = b.addTranslateC(.{
         .root_source_file = b.path("src/microui/microui.h"),
         .target = target,
         .optimize = optimize,
     });
-    c_translate_c.addIncludePath(b.path("src/microui/"));
-    c_translate_c.addSystemIncludePath(.{
+    c_microui_translate_c.addIncludePath(b.path("src/microui/"));
+    c_microui_translate_c.addSystemIncludePath(.{
         .cwd_relative = "/usr/include",
     });
 
-    const c_microui = c_translate_c.createModule();
+    const c_microui = c_microui_translate_c.createModule();
     c_microui.addCSourceFiles(.{
         .root = b.path("src/microui/"),
         .files = &.{
@@ -62,11 +62,15 @@ pub fn build(b: *std.Build) void {
     });
 
     // build libc
-    std.Io.Dir.cwd().access(b.*.graph.*.io, "lib/local", .{}) catch {
+    const deps_exist = if (std.Io.Dir.cwd().access(b.*.graph.*.io, "lib/local/lib/libSDL3.a", .{})) |_| true else |_| false;
+
+    if (!deps_exist) {
         const cmake_configure_libc = b.addSystemCommand(&.{
             "cmake",
-            "-S .",
-            "-B lib/build",
+            "-S",
+            ".",
+            "-B",
+            "lib/build",
             "-DCMAKE_INSTALL_PREFIX=lib/local/",
             "-DCMAKE_INSTALL_LIBDIR=lib",
             "-DCMAKE_BUILD_TYPE=Release",
@@ -74,13 +78,10 @@ pub fn build(b: *std.Build) void {
         const cmake_build_libc = b.addSystemCommand(&.{ "cmake", "--build", "lib/build", "-j4" });
         cmake_build_libc.step.dependOn(&cmake_configure_libc.step);
         exe.step.dependOn(&cmake_build_libc.step);
-    };
+    }
 
     b.installArtifact(exe);
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
     b.step("run", "Run the app").dependOn(&run_cmd.step);
 }

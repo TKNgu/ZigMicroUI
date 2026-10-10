@@ -15,6 +15,7 @@ function(build_git_lib name repo tag depends)
         GIT_REPOSITORY ${repo}
         GIT_TAG ${tag}
         GIT_SHALLOW TRUE
+        UPDATE_DISCONNECTED 1
         DEPENDS ${depends}
         CMAKE_ARGS
             -DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX}
