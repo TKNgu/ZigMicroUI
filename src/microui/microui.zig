@@ -1,8 +1,100 @@
 const std = @import("std");
 const c_microui = @import("c_microui");
 
+fn push(stk: anytype, val: anytype) void {
+    std.debug.assert(stk.*.idx < stk.*.items.len);
+    stk.*.items[@intCast(stk.*.idx)] = val;
+    stk.*.idx += 1;
+}
+
 pub const MicroUI = struct {
     mu_context: *c_microui.mu_Context,
+
+    // =========================================================================
+
+    fn rawGetClipRect(ctx: *c_microui.mu_Context) c_microui.mu_Rect {
+        std.debug.assert(ctx.*.clip_stack.idx > 0);
+        return ctx.*.clip_stack.items[@intCast(ctx.*.clip_stack.idx - 1)];
+    }
+
+    fn rawPushCommand(ctx: *c_microui.mu_Context, cmd_type: c_int, size: c_int) [*c]c_microui.mu_Command {
+        const cmd: [*c]c_microui.mu_Command = @ptrCast(@alignCast(&ctx.*.command_list.items[@intCast(ctx.*.command_list.idx)]));
+        const aligned_size = (size + 7) & ~@as(c_int, 7);
+        std.debug.assert(ctx.*.command_list.idx + aligned_size < ctx.*.command_list.items.len);
+        cmd.*.base.type = cmd_type;
+        cmd.*.base.size = aligned_size;
+        ctx.*.command_list.idx += aligned_size;
+        return cmd;
+    }
+
+    fn rawDrawRect(ctx: *c_microui.mu_Context, rect: c_microui.mu_Rect, color: c_microui.mu_Color) void {
+        const draw_rect = intersectRects(rect, rawGetClipRect(ctx));
+        if (draw_rect.w > 0 and draw_rect.h > 0) {
+            const cmd = rawPushCommand(ctx, c_microui.MU_COMMAND_RECT, @sizeOf(c_microui.mu_RectCommand));
+            cmd.*.rect.rect = draw_rect;
+            cmd.*.rect.color = color;
+        }
+    }
+
+    fn rawDrawBox(ctx: *c_microui.mu_Context, rect: c_microui.mu_Rect, color: c_microui.mu_Color) void {
+        rawDrawRect(ctx, c_microui.mu_rect(rect.x + 1, rect.y, rect.w - 2, 1), color);
+        rawDrawRect(ctx, c_microui.mu_rect(rect.x + 1, rect.y + rect.h - 1, rect.w - 2, 1), color);
+        rawDrawRect(ctx, c_microui.mu_rect(rect.x, rect.y, 1, rect.h), color);
+        rawDrawRect(ctx, c_microui.mu_rect(rect.x + rect.w - 1, rect.y, 1, rect.h), color);
+    }
+
+    fn rawExpandRect(rect: c_microui.mu_Rect, n: c_int) c_microui.mu_Rect {
+        return c_microui.mu_rect(rect.x - n, rect.y - n, rect.w + n * 2, rect.h + n * 2);
+    }
+
+    fn rawDrawFrame(ctx: [*c]c_microui.mu_Context, rect: c_microui.mu_Rect, color_id: c_int) callconv(.c) void {
+        const colors = ctx.*.style.*.colors;
+        rawDrawRect(ctx.?, rect, colors[@intCast(color_id)]);
+        if (color_id == c_microui.MU_COLOR_SCROLLBASE or color_id == c_microui.MU_COLOR_SCROLLTHUMB or
+            color_id == c_microui.MU_COLOR_TITLEBG)
+        {
+            return;
+        }
+        if (colors[c_microui.MU_COLOR_BORDER].a != 0) {
+            rawDrawBox(ctx.?, rawExpandRect(rect, 1), colors[c_microui.MU_COLOR_BORDER]);
+        }
+    }
+
+    const default_style: c_microui.mu_Style = .{
+        .font = null,
+        .size = .{ .x = 68, .y = 10 },
+        .padding = 5,
+        .spacing = 4,
+        .indent = 24,
+        .title_height = 24,
+        .scrollbar_size = 12,
+        .thumb_size = 8,
+        .colors = [14]c_microui.mu_Color{
+            .{ .r = 230, .g = 230, .b = 230, .a = 255 }, // MU_COLOR_TEXT
+            .{ .r = 25, .g = 25, .b = 25, .a = 255 }, // MU_COLOR_BORDER
+            .{ .r = 50, .g = 50, .b = 50, .a = 255 }, // MU_COLOR_WINDOWBG
+            .{ .r = 25, .g = 25, .b = 25, .a = 255 }, // MU_COLOR_TITLEBG
+            .{ .r = 240, .g = 240, .b = 240, .a = 255 }, // MU_COLOR_TITLETEXT
+            .{ .r = 0, .g = 0, .b = 0, .a = 0 }, // MU_COLOR_PANELBG
+            .{ .r = 75, .g = 75, .b = 75, .a = 255 }, // MU_COLOR_BUTTON
+            .{ .r = 95, .g = 95, .b = 95, .a = 255 }, // MU_COLOR_BUTTONHOVER
+            .{ .r = 115, .g = 115, .b = 115, .a = 255 }, // MU_COLOR_BUTTONFOCUS
+            .{ .r = 30, .g = 30, .b = 30, .a = 255 }, // MU_COLOR_BASE
+            .{ .r = 35, .g = 35, .b = 35, .a = 255 }, // MU_COLOR_BASEHOVER
+            .{ .r = 40, .g = 40, .b = 40, .a = 255 }, // MU_COLOR_BASEFOCUS
+            .{ .r = 43, .g = 43, .b = 43, .a = 255 }, // MU_COLOR_SCROLLBASE
+            .{ .r = 30, .g = 30, .b = 30, .a = 255 }, // MU_COLOR_SCROLLTHUMB
+        },
+    };
+
+    fn rawInit(ctx: *c_microui.mu_Context) void {
+        @memset(@as([*]u8, @ptrCast(ctx))[0..@sizeOf(c_microui.mu_Context)], 0);
+        ctx.*.draw_frame = rawDrawFrame;
+        ctx.*._style = default_style;
+        ctx.*.style = &ctx.*._style;
+    }
+
+    // =========================================================================
 
     // =========================================================================
     // 1. LIFECYCLE & CORE
@@ -23,7 +115,7 @@ pub const MicroUI = struct {
         const ctx = try allocator.create(c_microui.mu_Context);
         errdefer allocator.destroy(ctx);
 
-        c_microui.mu_init(ctx);
+        rawInit(ctx);
         ctx.*.text_width = text_width;
         ctx.*.text_height = text_height;
 
@@ -48,19 +140,86 @@ pub const MicroUI = struct {
     /// - Thiết lập vùng cắt mặc định phủ toàn bộ không gian tọa độ.
     /// - Tăng chỉ số frame hiện tại (`frame += 1`).
     pub fn begin(self: *MicroUI) void {
-        c_microui.mu_begin(self.mu_context);
+        std.debug.assert(self.mu_context.*.text_width != null and self.mu_context.*.text_height != null);
+        self.mu_context.*.command_list.idx = 0;
+        self.mu_context.*.root_list.idx = 0;
+        self.mu_context.*.scroll_target = null;
+        self.mu_context.*.hover_root = self.mu_context.*.next_hover_root;
+        self.mu_context.*.next_hover_root = null;
+        self.mu_context.*.mouse_delta.x = self.mu_context.*.mouse_pos.x - self.mu_context.*.last_mouse_pos.x;
+        self.mu_context.*.mouse_delta.y = self.mu_context.*.mouse_pos.y - self.mu_context.*.last_mouse_pos.y;
+        self.mu_context.*.frame += 1;
+    }
+
+    /// Kết thúc frame giao diện và liên kết các lệnh render của các root container.
+    ///
+    fn compareContainersByZIndex(_: void, a: [*c]c_microui.mu_Container, b: [*c]c_microui.mu_Container) bool {
+        return a.*.zindex < b.*.zindex;
     }
 
     /// Kết thúc frame giao diện và liên kết các lệnh render của các root container.
     ///
     /// Thuật toán & Thiết kế:
     /// - Kiểm tra tính toàn vẹn của các ngăn xếp container, clip rect và id.
-    /// - Duyệt ngược danh sách `root_list` (từ lớp nền lên lớp trên cùng):
-    ///   + Thiết lập lệnh JUMP từ tail của container trước sang head của container sau.
-    ///   + Đảm bảo luồng render duyệt qua đúng thứ tự z-index của các cửa sổ.
-    /// - Cập nhật trạng thái chuột và phím (`mouse_pressed = 0`, `key_pressed = 0`, `input_text = ""`).
+    /// - Xử lý cuộn cho container mục tiêu (scroll_target).
+    /// - Cập nhật trạng thái focus và đưa root container đang hover lên đầu nếu chuột được nhấn.
+    /// - Reset trạng thái input chuột, phím.
+    /// - Sắp xếp danh sách `root_list` theo thứ tự z-index tăng dần.
+    /// - Liên kết các root container bằng các lệnh JUMP:
+    ///   + Thiết lập lệnh JUMP đầu tiên sang head của root container đầu tiên.
+    ///   + Thiết lập lệnh JUMP từ tail của root container trước sang head của container sau.
+    ///   + Thiết lập lệnh JUMP từ tail của container cuối cùng trỏ đến cuối danh sách command list.
     pub fn end(self: *MicroUI) void {
-        c_microui.mu_end(self.mu_context);
+        std.debug.assert(self.mu_context.*.container_stack.idx == 0);
+        std.debug.assert(self.mu_context.*.clip_stack.idx == 0);
+        std.debug.assert(self.mu_context.*.id_stack.idx == 0);
+        std.debug.assert(self.mu_context.*.layout_stack.idx == 0);
+
+        if (self.mu_context.*.scroll_target != null) {
+            self.mu_context.*.scroll_target.*.scroll.x += self.mu_context.*.scroll_delta.x;
+            self.mu_context.*.scroll_target.*.scroll.y += self.mu_context.*.scroll_delta.y;
+        }
+
+        if (self.mu_context.*.updated_focus == 0) {
+            self.mu_context.*.focus = 0;
+        }
+        self.mu_context.*.updated_focus = 0;
+
+        if (self.mu_context.*.mouse_pressed != 0 and
+            self.mu_context.*.next_hover_root != null and
+            self.mu_context.*.next_hover_root.*.zindex < self.mu_context.*.last_zindex and
+            self.mu_context.*.next_hover_root.*.zindex >= 0)
+        {
+            self.bringToFront(self.mu_context.*.next_hover_root);
+        }
+
+        self.mu_context.*.key_pressed = 0;
+        self.mu_context.*.input_text[0] = 0;
+        self.mu_context.*.mouse_pressed = 0;
+        self.mu_context.*.scroll_delta = .{ .x = 0, .y = 0 };
+        self.mu_context.*.last_mouse_pos = self.mu_context.*.mouse_pos;
+
+        const n: usize = @intCast(self.mu_context.*.root_list.idx);
+        const root_items = self.mu_context.*.root_list.items[0..n];
+        std.mem.sort([*c]c_microui.mu_Container, root_items, {}, compareContainersByZIndex);
+
+        for (root_items, 0..) |cnt, i| {
+            if (i == 0) {
+                const cmd: [*c]c_microui.mu_Command = @ptrCast(@alignCast(&self.mu_context.*.command_list.items));
+                cmd.*.jump.dst = @ptrCast(@as([*]u8, @ptrCast(cnt.*.head)) + @sizeOf(c_microui.mu_JumpCommand));
+            } else {
+                const prev = root_items[i - 1];
+                prev.*.tail.*.jump.dst = @ptrCast(@as([*]u8, @ptrCast(cnt.*.head)) + @sizeOf(c_microui.mu_JumpCommand));
+            }
+            if (i == n - 1) {
+                cnt.*.tail.*.jump.dst = @ptrCast(&self.mu_context.*.command_list.items[@intCast(self.mu_context.*.command_list.idx)]);
+            }
+        }
+    }
+
+    pub fn bringToFront(self: *MicroUI, cnt: *c_microui.mu_Container) void {
+        cnt.*.zindex = self.mu_context.*.last_zindex + 1;
+        self.mu_context.*.last_zindex += 1;
     }
 
     // =========================================================================
@@ -189,8 +348,7 @@ pub const MicroUI = struct {
     /// - Assert stack clip không rỗng (`clip_stack.idx > 0`).
     /// - Trả về phần tử tại chỉ số `clip_stack.idx - 1`.
     pub fn getClipRect(self: *MicroUI) c_microui.mu_Rect {
-        std.debug.assert(self.mu_context.*.clip_stack.idx > 0);
-        return self.mu_context.*.clip_stack.items[@intCast(self.mu_context.*.clip_stack.idx - 1)];
+        return rawGetClipRect(self.mu_context);
     }
 
     /// Đẩy một vùng cắt mới vào stack và tính giao với vùng cắt hiện tại.
@@ -241,13 +399,7 @@ pub const MicroUI = struct {
     /// - Thiết lập `base.type = cmd_type` và `base.size = aligned_size`.
     /// - Tăng chỉ số ghi `command_list.idx` và trả về con trỏ tới struct command.
     pub fn pushCommand(self: *MicroUI, cmd_type: c_int, size: c_int) [*c]c_microui.mu_Command {
-        const cmd: [*c]c_microui.mu_Command = @ptrCast(@alignCast(&self.mu_context.*.command_list.items[@intCast(self.mu_context.*.command_list.idx)]));
-        const aligned_size = (size + 7) & ~@as(c_int, 7);
-        std.debug.assert(self.mu_context.*.command_list.idx + aligned_size < self.mu_context.*.command_list.items.len);
-        cmd.*.base.type = cmd_type;
-        cmd.*.base.size = aligned_size;
-        self.mu_context.*.command_list.idx += aligned_size;
-        return cmd;
+        return rawPushCommand(self.mu_context, cmd_type, size);
     }
 
     /// Đẩy lệnh JUMP để chuyển tiếp luồng duyệt command list đến một vị trí đích.
@@ -299,12 +451,7 @@ pub const MicroUI = struct {
     ///   + Tạo command `MU_COMMAND_RECT`.
     ///   + Gán tọa độ đã cắt và màu sắc tương ứng.
     pub fn drawRect(self: *MicroUI, rect: c_microui.mu_Rect, color: c_microui.mu_Color) void {
-        const tmp_rect = intersectRects(rect, self.getClipRect());
-        if (tmp_rect.w > 0 and tmp_rect.h > 0) {
-            const cmd = self.pushCommand(c_microui.MU_COMMAND_RECT, @sizeOf(c_microui.mu_RectCommand));
-            cmd.*.rect.rect = tmp_rect;
-            cmd.*.rect.color = color;
-        }
+        rawDrawRect(self.mu_context, rect, color);
     }
 
     /// Đẩy lệnh vẽ biểu tượng (Icon) vào command buffer.
@@ -788,8 +935,272 @@ pub const MicroUI = struct {
     /// Thuật toán & Thiết kế:
     /// - Gọi hàm C `mu_begin_window_ex` để quản lý tiêu đề, thanh kéo thả, nút cuộn, nút thu nhỏ.
     /// - Trả về `true` nếu cửa sổ đang mở và hiển thị nội dung bên trong, `false` nếu bị đóng hoặc thu nhỏ.
+    /// Tìm kiếm một phần tử trong pool theo ID.
+    pub fn poolGet(_: *MicroUI, items: []c_microui.mu_PoolItem, id: c_uint) ?usize {
+        for (items, 0..) |item, i| {
+            if (item.id == id) {
+                return i;
+            }
+        }
+        return null;
+    }
+
+    /// Cập nhật thời điểm sử dụng gần nhất của phần tử trong pool với frame hiện tại.
+    pub fn poolUpdate(self: *MicroUI, items: []c_microui.mu_PoolItem, idx: usize) void {
+        items[idx].last_update = self.mu_context.*.frame;
+    }
+
+    /// Khởi tạo hoặc tái sử dụng phần tử cũ nhất (least recently used) trong pool cho ID mới.
+    pub fn poolInit(self: *MicroUI, items: []c_microui.mu_PoolItem, id: c_uint) usize {
+        var n: ?usize = null;
+        var oldest_frame = self.mu_context.*.frame;
+        for (items, 0..) |item, i| {
+            if (item.last_update < oldest_frame) {
+                oldest_frame = item.last_update;
+                n = i;
+            }
+        }
+        const idx = n orelse 0;
+        items[idx].id = id;
+        self.poolUpdate(items, idx);
+        return idx;
+    }
+
+    /// Lấy hoặc tạo một container giao diện người dùng theo ID và cờ tùy chọn.
+    pub fn getContainer(self: *MicroUI, id: c_uint, opt: c_int) ?*c_microui.mu_Container {
+        const pool = &self.mu_context.*.container_pool;
+        if (self.poolGet(pool, id)) |idx| {
+            if (self.mu_context.*.containers[idx].open != 0 or ~opt & c_microui.MU_OPT_CLOSED != 0) {
+                self.poolUpdate(pool, idx);
+            }
+            return &self.mu_context.*.containers[idx];
+        }
+        if (opt & c_microui.MU_OPT_CLOSED != 0) {
+            return null;
+        }
+        const idx = self.poolInit(pool, id);
+        const cnt = &self.mu_context.*.containers[idx];
+        @memset(@as([*]u8, @ptrCast(cnt))[0..@sizeOf(c_microui.mu_Container)], 0);
+        cnt.*.open = 1;
+        self.bringToFront(cnt);
+        return cnt;
+    }
+
+    /// Lấy container bằng tên (tính ID từ tên rồi tìm container).
+    pub fn getContainerByName(self: *MicroUI, name: [:0]const u8) ?*c_microui.mu_Container {
+        const id = self.getId(name.ptr, @intCast(name.len));
+        return self.getContainer(id, 0);
+    }
+
+    pub const ScrollbarAxis = enum {
+        vertical,
+        horizontal,
+    };
+
+    /// Xử lý logic tương tác và vẽ thanh cuộn (scrollbar).
+    ///
+    /// Thuật toán & Thiết kế:
+    /// - Xác định độ cuộn tối đa `maxscroll` dựa trên kích thước nội dung `cs` và kích thước khung hiển thị `body`.
+    /// - Nếu nội dung vượt quá kích thước khung (`maxscroll > 0` và `body > 0`):
+    ///   + Xác định định danh `id` ("!scrollbary" cho trục dọc, "!scrollbarx" cho trục ngang).
+    ///   + Tính kích thước rãnh trượt `base` ở cạnh phải (dọc) hoặc cạnh dưới (ngang).
+    ///   + Cập nhật tương tác điều khiển qua `updateControl()`.
+    ///   + Nếu widget có focus và đang giữ chuột trái: cập nhật giá trị cuộn theo `mouse_delta`.
+    ///   + Giới hạn độ cuộn trong khoảng `[0, maxscroll]` bằng `std.math.clamp`.
+    ///   + Vẽ rãnh trượt `MU_COLOR_SCROLLBASE`.
+    ///   + Tính toán vị trí và độ dài thanh trượt `thumb` (tỷ lệ với khung hiển thị, tối thiểu `thumb_size`).
+    ///   + Vẽ thanh trượt `MU_COLOR_SCROLLTHUMB`.
+    ///   + Gán container làm `scroll_target` nếu con trỏ chuột nằm trong `body`.
+    /// - Nếu không cần cuộn: đặt độ cuộn của container về 0.
+    pub fn scrollbar(
+        self: *MicroUI,
+        cnt: *c_microui.mu_Container,
+        body: *c_microui.mu_Rect,
+        cs: c_microui.mu_Vec2,
+        axis: ScrollbarAxis,
+    ) void {
+        const sz = self.mu_context.*.style.*.scrollbar_size;
+        switch (axis) {
+            .vertical => {
+                const maxscroll = cs.y - body.h;
+                if (maxscroll > 0 and body.h > 0) {
+                    const id = self.getId("!scrollbary", 11);
+                    var base = body.*;
+                    base.x = body.x + body.w;
+                    base.w = sz;
+
+                    self.updateControl(id, base, 0);
+                    if (self.mu_context.*.focus == id and self.mu_context.*.mouse_down == c_microui.MU_MOUSE_LEFT) {
+                        cnt.scroll.y += @divTrunc(self.mu_context.*.mouse_delta.y * cs.y, base.h);
+                    }
+                    cnt.scroll.y = std.math.clamp(cnt.scroll.y, 0, maxscroll);
+
+                    if (self.mu_context.*.draw_frame) |draw_frame| {
+                        draw_frame(self.mu_context, base, c_microui.MU_COLOR_SCROLLBASE);
+                    }
+
+                    var thumb = base;
+                    thumb.h = @max(self.mu_context.*.style.*.thumb_size, @divTrunc(base.h * body.h, cs.y));
+                    thumb.y += @divTrunc(cnt.scroll.y * (base.h - thumb.h), maxscroll);
+
+                    if (self.mu_context.*.draw_frame) |draw_frame| {
+                        draw_frame(self.mu_context, thumb, c_microui.MU_COLOR_SCROLLTHUMB);
+                    }
+
+                    if (self.mouseOver(body.*)) {
+                        self.mu_context.*.scroll_target = cnt;
+                    }
+                } else {
+                    cnt.scroll.y = 0;
+                }
+            },
+            .horizontal => {
+                const maxscroll = cs.x - body.w;
+                if (maxscroll > 0 and body.w > 0) {
+                    const id = self.getId("!scrollbarx", 11);
+                    var base = body.*;
+                    base.y = body.y + body.h;
+                    base.h = sz;
+
+                    self.updateControl(id, base, 0);
+                    if (self.mu_context.*.focus == id and self.mu_context.*.mouse_down == c_microui.MU_MOUSE_LEFT) {
+                        cnt.scroll.x += @divTrunc(self.mu_context.*.mouse_delta.x * cs.x, base.w);
+                    }
+                    cnt.scroll.x = std.math.clamp(cnt.scroll.x, 0, maxscroll);
+
+                    if (self.mu_context.*.draw_frame) |draw_frame| {
+                        draw_frame(self.mu_context, base, c_microui.MU_COLOR_SCROLLBASE);
+                    }
+
+                    var thumb = base;
+                    thumb.w = @max(self.mu_context.*.style.*.thumb_size, @divTrunc(base.w * body.w, cs.x));
+                    thumb.x += @divTrunc(cnt.scroll.x * (base.w - thumb.w), maxscroll);
+
+                    if (self.mu_context.*.draw_frame) |draw_frame| {
+                        draw_frame(self.mu_context, thumb, c_microui.MU_COLOR_SCROLLTHUMB);
+                    }
+
+                    if (self.mouseOver(body.*)) {
+                        self.mu_context.*.scroll_target = cnt;
+                    }
+                } else {
+                    cnt.scroll.x = 0;
+                }
+            },
+        }
+    }
+
+    pub fn scrollbars(self: *MicroUI, cnt: *c_microui.mu_Container, body: *c_microui.mu_Rect) void {
+        const sz = self.mu_context.*.style.*.scrollbar_size;
+        var content_size = cnt.*.content_size;
+        content_size.x += self.mu_context.*.style.*.padding * 2;
+        content_size.y += self.mu_context.*.style.*.padding * 2;
+        self.pushClipRect(body.*);
+        if (content_size.y > body.h) {
+            body.w -= sz;
+        }
+        if (content_size.x > body.w) {
+            body.h -= sz;
+        }
+        self.scrollbar(cnt, body, content_size, .vertical);
+        self.scrollbar(cnt, body, content_size, .horizontal);
+        self.popClipRect();
+    }
+
+    pub fn beginRootContainer(self: *MicroUI, cnt: *c_microui.mu_Container) void {
+        push(&self.mu_context.*.container_stack, cnt);
+        push(&self.mu_context.*.root_list, cnt);
+        cnt.*.head = self.pushJump(null);
+        if (rectOverlapsVec2(cnt.rect, self.mu_context.*.mouse_pos) and
+            (self.mu_context.*.next_hover_root == null or cnt.*.zindex > self.mu_context.*.next_hover_root.*.zindex))
+        {
+            self.mu_context.*.next_hover_root = cnt;
+        }
+        push(&self.mu_context.*.clip_stack, c_microui.mu_rect(0, 0, 0x1000000, 0x1000000));
+    }
+
+    pub fn pushContainerBody(self: *MicroUI, cnt: *c_microui.mu_Container, body: c_microui.mu_Rect, opt: c_int) void {
+        var tmp_body = body;
+        if (~opt & c_microui.MU_OPT_NOSCROLL != 0) {
+            self.scrollbars(cnt, &tmp_body);
+        }
+        self.pushLayout(rawExpandRect(tmp_body, -self.mu_context.*.style.*.padding), cnt.*.scroll);
+        cnt.*.body = tmp_body;
+    }
+
     pub fn beginWindowEx(self: *MicroUI, title: [:0]const u8, rect: c_microui.mu_Rect, opt: c_int) bool {
-        return c_microui.mu_begin_window_ex(self.mu_context, title.ptr, rect, opt) != 0;
+        const id = self.getId(title.ptr, @intCast(title.len));
+        const cnt = self.getContainer(id, opt);
+        if (cnt == null or cnt.?.open == 0) {
+            return false;
+        }
+        push(&self.mu_context.*.id_stack, id);
+        if (cnt.?.rect.w == 0) {
+            cnt.?.rect = rect;
+        }
+        self.beginRootContainer(cnt.?);
+        var body = cnt.?.rect;
+        const local_rect = body;
+        if (~opt & c_microui.MU_OPT_NOFRAME != 0) {
+            self.mu_context.*.draw_frame.?(self.mu_context, local_rect, c_microui.MU_COLOR_WINDOWBG);
+        }
+        if (~opt & c_microui.MU_OPT_NOTITLE != 0) {
+            var tr: c_microui.mu_Rect = local_rect;
+            tr.h = self.mu_context.*.style.*.title_height;
+            self.mu_context.*.draw_frame.?(self.mu_context, tr, c_microui.MU_COLOR_TITLEBG);
+
+            // do title text
+            {
+                const title_id = self.getId("!title", 6);
+                self.updateControl(title_id, tr, opt);
+                self.drawControlText(title, tr, c_microui.MU_COLOR_TITLETEXT, opt);
+                if (title_id == self.mu_context.*.focus and self.mu_context.*.mouse_down == c_microui.MU_MOUSE_LEFT) {
+                    cnt.?.rect.x += self.mu_context.*.mouse_delta.x;
+                    cnt.?.rect.y += self.mu_context.*.mouse_delta.y;
+                }
+                body.y += tr.h;
+                body.h -= tr.h;
+            }
+
+            if (~opt & c_microui.MU_OPT_NOCLOSE != 0) {
+                const close_id = self.getId("!close", 6);
+                const close_rect = c_microui.mu_rect(tr.x + tr.w - tr.h, tr.y, tr.h, tr.h);
+                tr.w -= close_rect.w;
+                self.drawIcon(c_microui.MU_ICON_CLOSE, close_rect, self.mu_context.*.style.*.colors[0][c_microui.MU_COLOR_TITLETEXT]);
+                self.updateControl(close_id, close_rect, opt);
+                if (self.mu_context.*.mouse_pressed == c_microui.MU_MOUSE_LEFT and close_id == self.mu_context.*.focus) {
+                    cnt.?.open = 0;
+                }
+            }
+        }
+        self.pushContainerBody(cnt.?, body, opt);
+
+        if (~opt & c_microui.MU_OPT_NORESIZE != 0) {
+            const size = self.mu_context.*.style.*.title_height;
+            const resize_id = self.getId("!resize", 7);
+            const resize_rect = c_microui.mu_rect(local_rect.x + local_rect.w - size, local_rect.y + local_rect.h - size, size, size);
+            self.updateControl(resize_id, resize_rect, opt);
+            if (resize_id == self.mu_context.*.focus and self.mu_context.*.mouse_down == c_microui.MU_MOUSE_LEFT) {
+                cnt.?.rect.w = @max(96, cnt.?.rect.w + self.mu_context.*.mouse_delta.x);
+                cnt.?.rect.h = @max(64, cnt.?.rect.h + self.mu_context.*.mouse_delta.y);
+            }
+        }
+
+        if (opt & c_microui.MU_OPT_AUTOSIZE != 0) {
+            const r = self.getLayout().*.body;
+            cnt.?.rect.w = cnt.?.content_size.x + (cnt.?.rect.w - r.w);
+            cnt.?.rect.h = cnt.?.content_size.y + (cnt.?.rect.h - r.h);
+        }
+
+        if (opt & c_microui.MU_OPT_POPUP != 0 and
+            self.mu_context.*.mouse_pressed != 0 and
+            self.mu_context.*.hover_root != cnt)
+        {
+            cnt.?.open = 0;
+        }
+
+        self.pushClipRect(cnt.?.body);
+        return c_microui.MU_RES_ACTIVE != 0;
     }
 
     /// Kết thúc định nghĩa cửa sổ hiện tại.
@@ -798,9 +1209,24 @@ pub const MicroUI = struct {
         self.endRootContainer();
     }
 
+    /// Bắt đầu một bảng con (Panel) lồng bên trong container hiện tại với tùy chọn `opt`.
+    pub fn beginPanelEx(self: *MicroUI, name: [:0]const u8, opt: c_int) void {
+        self.pushId(name.ptr, @intCast(name.len));
+        const cnt = self.getContainer(self.mu_context.*.last_id, opt) orelse return;
+        cnt.*.rect = self.layoutNext();
+        if (~opt & c_microui.MU_OPT_NOFRAME != 0) {
+            if (self.mu_context.*.draw_frame) |draw_frame| {
+                draw_frame(self.mu_context, cnt.*.rect, c_microui.MU_COLOR_PANELBG);
+            }
+        }
+        push(&self.mu_context.*.container_stack, cnt);
+        self.pushContainerBody(cnt, cnt.*.rect, opt);
+        self.pushClipRect(cnt.*.body);
+    }
+
     /// Bắt đầu một bảng con (Panel) lồng bên trong container hiện tại.
     pub fn beginPanel(self: *MicroUI, name: [:0]const u8) void {
-        c_microui.mu_begin_panel(self.mu_context, name);
+        self.beginPanelEx(name, 0);
     }
 
     /// Kết thúc bảng con (Panel).
@@ -817,19 +1243,19 @@ pub const MicroUI = struct {
     /// - Đặt vị trí popup tại tọa độ chuột `mouse_pos`, kích thước khởi đầu (1, 1).
     /// - Đưa popup lên lớp trên cùng thông qua `mu_bring_to_front`.
     pub fn openPopup(self: *MicroUI, name: [:0]const u8) void {
-        const cnt = c_microui.mu_get_container(self.mu_context, name.ptr);
+        const cnt = self.getContainerByName(name) orelse return;
         self.mu_context.*.hover_root = cnt;
         self.mu_context.*.next_hover_root = cnt;
         cnt.*.rect = c_microui.mu_rect(self.mu_context.*.mouse_pos.x, self.mu_context.*.mouse_pos.y, 1, 1);
         cnt.*.open = 1;
-        c_microui.mu_bring_to_front(self.mu_context, cnt);
+        self.bringToFront(cnt);
     }
 
     /// Bắt đầu khối nội dung cho menu popup đã mở.
     pub fn beginPopup(self: *MicroUI, name: [:0]const u8) c_int {
         const opt = c_microui.MU_OPT_POPUP | c_microui.MU_OPT_AUTOSIZE | c_microui.MU_OPT_NORESIZE |
             c_microui.MU_OPT_NOSCROLL | c_microui.MU_OPT_NOTITLE | c_microui.MU_OPT_CLOSED;
-        return c_microui.mu_begin_window_ex(self.mu_context, name.ptr, c_microui.mu_rect(0, 0, 0, 0), opt);
+        return if (self.beginWindowEx(name, c_microui.mu_rect(0, 0, 0, 0), opt)) c_microui.MU_RES_ACTIVE else 0;
     }
 
     /// Kết thúc nội dung menu popup.
@@ -996,15 +1422,10 @@ pub const MicroUI = struct {
         return res;
     }
 
-    /// Wrapper gọi hàm C `mu_textbox` với slice bộ đệm chuỗi.
+    /// Wrapper gọi hàm `textBox` với slice bộ đệm chuỗi.
     pub fn drawTextBox(self: *MicroUI, text: []u8) usize {
         if (text.len == 0) return 0;
-        const tmp: [*c]u8 = @ptrCast(&text[0]);
-        return @as(usize, @intCast(c_microui.mu_textbox(
-            self.mu_context,
-            tmp,
-            @as(c_int, @intCast(text.len)),
-        )));
+        return @as(usize, @intCast(self.textBox(text.ptr, @intCast(text.len))));
     }
 
     /// Widget hộp nhập văn bản (Textbox) cơ bản.
@@ -1026,12 +1447,85 @@ pub const MicroUI = struct {
         return self.textBoxRaw(text, len, id, rect, opt);
     }
 
-    /// Hàm xử lý cấp thấp cho hộp nhập văn bản.
+    /// Hàm xử lý cấp thấp cho hộp nhập văn bản (Textbox).
     ///
     /// Thuật toán & Thiết kế:
-    /// - Gọi `mu_textbox_raw` từ thư viện C để xử lý con trỏ nhấp nháy, phím Backspace, Enter, chèn ký tự UTF-8.
+    /// - Gọi `updateControl` với cờ `MU_OPT_HOLDFOCUS` để duy trì tiêu điểm khi click vào textbox.
+    /// - Khi widget đang giữ tiêu điểm (`focus == id`):
+    ///   + Nhận ký tự mới từ `ctx.input_text`, ghép vào cuối `buf` nếu còn dung lượng và đặt cờ `MU_RES_CHANGE`.
+    ///   + Bắt phím Backspace: xóa ký tự đứng trước, lùi qua các continuation byte của UTF-8 (`(byte & 0xc0) == 0x80`).
+    ///   + Bắt phím Enter / Return: hủy tiêu điểm (`setFocus(0)`) và đặt cờ `MU_RES_SUBMIT`.
+    /// - Vẽ khung nền widget bằng `drawControlFrame(id, rect, MU_COLOR_BASE, opt)`.
+    /// - Nếu widget đang có tiêu điểm:
+    ///   + Tính toán vị trí hiển thị text và con trỏ cursor nhấp nháy dựa trên độ rộng `text_width` và padding.
+    ///   + Giới hạn vùng vẽ qua `pushClipRect(rect)` và vẽ text + con trỏ dọc (1px).
+    /// - Nếu không có tiêu điểm:
+    ///   + Vẽ text tĩnh thông qua `drawControlText`.
     pub fn textBoxRaw(self: *MicroUI, buf: [*c]u8, bufsz: c_int, id: c_uint, rect: c_microui.mu_Rect, opt: c_int) c_int {
-        return c_microui.mu_textbox_raw(self.mu_context, buf, bufsz, id, rect, opt);
+        var res: c_int = 0;
+        self.updateControl(id, rect, opt | c_microui.MU_OPT_HOLDFOCUS);
+
+        if (self.mu_context.*.focus == id) {
+            // Xử lý text input
+            var len: usize = std.mem.len(buf);
+            const input_slice = std.mem.sliceTo(&self.mu_context.*.input_text, 0);
+            if (bufsz > @as(c_int, @intCast(len)) + 1) {
+                const avail: usize = @intCast(bufsz - @as(c_int, @intCast(len)) - 1);
+                const n = @min(avail, input_slice.len);
+                if (n > 0) {
+                    @memcpy(buf[len .. len + n], input_slice[0..n]);
+                    len += n;
+                    buf[len] = 0;
+                    res |= c_microui.MU_RES_CHANGE;
+                }
+            }
+
+            // Xử lý backspace (hỗ trợ xóa đa byte UTF-8)
+            if ((self.mu_context.*.key_pressed & c_microui.MU_KEY_BACKSPACE) != 0 and len > 0) {
+                len -= 1;
+                while (len > 0 and (buf[len] & 0xc0) == 0x80) {
+                    len -= 1;
+                }
+                buf[len] = 0;
+                res |= c_microui.MU_RES_CHANGE;
+            }
+
+            // Xử lý phím Enter / Return
+            if ((self.mu_context.*.key_pressed & c_microui.MU_KEY_RETURN) != 0) {
+                self.setFocus(0);
+                res |= c_microui.MU_RES_SUBMIT;
+            }
+        }
+
+        // Vẽ widget
+        self.drawControlFrame(id, rect, c_microui.MU_COLOR_BASE, opt);
+        if (self.mu_context.*.focus == id) {
+            const colors = self.mu_context.*.style.*.colors;
+            const color = colors[c_microui.MU_COLOR_TEXT];
+            const font = self.mu_context.*.style.*.font;
+            const text_span = std.mem.span(buf);
+            const textw = if (self.mu_context.*.text_width) |tw_fn|
+                tw_fn(font, buf, @intCast(text_span.len))
+            else
+                0;
+            const texth = if (self.mu_context.*.text_height) |th_fn|
+                th_fn(font)
+            else
+                0;
+            const padding = self.mu_context.*.style.*.padding;
+            const ofx = rect.w - padding - textw - 1;
+            const textx = rect.x + @min(ofx, padding);
+            const texty = rect.y + @divTrunc(rect.h - texth, 2);
+
+            self.pushClipRect(rect);
+            self.drawTextEx(font, text_span, .{ .x = textx, .y = texty }, color);
+            self.drawRect(.{ .x = textx + textw, .y = texty, .w = 1, .h = texth }, color);
+            self.popClipRect();
+        } else {
+            self.drawControlText(buf, rect, c_microui.MU_COLOR_TEXT, opt);
+        }
+
+        return res;
     }
 
     extern "c" fn sprintf(str: [*c]u8, format: [*c]const u8, ...) c_int;
@@ -1191,13 +1685,13 @@ pub const MicroUI = struct {
     /// - Xử lý click chuột để đảo ngược trạng thái Active.
     /// - Cập nhật hoặc xóa phần tử trong `treenode_pool`.
     /// - Vẽ biểu tượng tam giác `MU_ICON_EXPANDED` hoặc `MU_ICON_COLLAPSED`.
-    /// - Vẽ nhãn văn bản bên cạnh biểu tượng và trả về trạng thái mở/đóng.
     fn headerInternal(self: *MicroUI, label: [:0]const u8, is_treenode: bool, opt: c_int) c_int {
         const id = self.getId(label.ptr, @intCast(label.len));
-        const idx = c_microui.mu_pool_get(self.mu_context, &self.mu_context.*.treenode_pool, c_microui.MU_TREENODEPOOL_SIZE, id);
+        const pool = &self.mu_context.*.treenode_pool;
+        const opt_idx = self.poolGet(pool, id);
         self.layoutRow(&[_]i32{-1}, 0);
 
-        var active = (idx >= 0);
+        var active = (opt_idx != null);
         const expanded = if ((opt & c_microui.MU_OPT_EXPANDED) != 0) !active else active;
         var r = self.layoutNext();
         self.updateControl(id, r, 0);
@@ -1206,14 +1700,14 @@ pub const MicroUI = struct {
             active = !active;
         }
 
-        if (idx >= 0) {
+        if (opt_idx) |idx| {
             if (active) {
-                c_microui.mu_pool_update(self.mu_context, &self.mu_context.*.treenode_pool, idx);
+                self.poolUpdate(pool, idx);
             } else {
-                @memset(@as([*]u8, @ptrCast(&self.mu_context.*.treenode_pool[@intCast(idx)]))[0..@sizeOf(c_microui.mu_PoolItem)], 0);
+                @memset(@as([*]u8, @ptrCast(&pool[idx]))[0..@sizeOf(c_microui.mu_PoolItem)], 0);
             }
         } else if (active) {
-            _ = c_microui.mu_pool_init(self.mu_context, &self.mu_context.*.treenode_pool, c_microui.MU_TREENODEPOOL_SIZE, id);
+            _ = self.poolInit(pool, id);
         }
 
         if (is_treenode) {
@@ -1227,11 +1721,14 @@ pub const MicroUI = struct {
         }
 
         const icon_id: c_int = if (expanded) c_microui.MU_ICON_EXPANDED else c_microui.MU_ICON_COLLAPSED;
-        self.drawIcon(icon_id, c_microui.mu_rect(r.x, r.y, r.h, r.h), self.mu_context.*.style.*.colors[0][c_microui.MU_COLOR_TEXT]);
+        const colors = self.mu_context.*.style.*.colors;
+        self.drawIcon(icon_id, c_microui.mu_rect(r.x, r.y, r.h, r.h), colors[c_microui.MU_COLOR_TEXT]);
         r.x += r.h - self.mu_context.*.style.*.padding;
         r.w -= r.h - self.mu_context.*.style.*.padding;
         self.drawControlText(label.ptr, r, c_microui.MU_COLOR_TEXT, 0);
 
         return if (expanded) c_microui.MU_RES_ACTIVE else 0;
     }
+
+    // =========================================================================
 };
