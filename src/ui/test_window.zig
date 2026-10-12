@@ -5,7 +5,7 @@ const LogBuf = @import("../ui/log_window.zig").LogBuf;
 const uint8Slider = @import("../microui/slider.zig").uint8Slider;
 
 pub fn testWindow(microui: *MicroUI, logbuf: *LogBuf, checks: *[3]i32, bg: *[3]f32) !void {
-    if (!microui.beginWindow("Test Window", c_microui.mu_rect(40, 40, 300, 450))) return;
+    if (!microui.beginWindow("Test Window", MicroUI.Rect.init(40, 40, 300, 450))) return;
     defer microui.endWindow();
 
     var win = microui.getCurrentContainer();
@@ -128,37 +128,37 @@ pub fn testWindow(microui: *MicroUI, logbuf: *LogBuf, checks: *[3]i32, bg: *[3]f
             microui.layoutBeginColumn();
             defer microui.layoutEndColumn();
 
-            var color: c_microui.mu_Color = .{
-                .r = @intFromFloat(bg[0]),
-                .g = @intFromFloat(bg[1]),
-                .b = @intFromFloat(bg[2]),
-                .a = 255,
-            };
+            var col = MicroUI.Color.init(
+                @intFromFloat(bg[0]),
+                @intFromFloat(bg[1]),
+                @intFromFloat(bg[2]),
+                255,
+            );
             defer bg.* = .{
-                @floatFromInt(color.r),
-                @floatFromInt(color.g),
-                @floatFromInt(color.b),
+                @floatFromInt(col.r),
+                @floatFromInt(col.g),
+                @floatFromInt(col.b),
             };
 
             microui.layoutRow(&[_]i32{ 60, -1 }, 0);
             microui.drawLabel("Red:");
-            _ = uint8Slider(microui, &color.r, 0, 255);
+            _ = uint8Slider(microui, &col.r, 0, 255);
             microui.drawLabel("Green:");
-            _ = uint8Slider(microui, &color.g, 0, 255);
+            _ = uint8Slider(microui, &col.g, 0, 255);
             microui.drawLabel("Blue:");
-            _ = uint8Slider(microui, &color.b, 0, 255);
+            _ = uint8Slider(microui, &col.b, 0, 255);
         }
         // color preview
         const rect = microui.layoutNext();
-        const color: c_microui.mu_Color = .{
-            .r = @intFromFloat(bg[0]),
-            .g = @intFromFloat(bg[1]),
-            .b = @intFromFloat(bg[2]),
-            .a = 255,
-        };
-        microui.drawRect(rect, color);
+        const preview_color = MicroUI.Color.init(
+            @intFromFloat(bg[0]),
+            @intFromFloat(bg[1]),
+            @intFromFloat(bg[2]),
+            255,
+        );
+        microui.drawRect(rect, preview_color);
         var buf: [32]u8 = undefined;
-        const view = std.fmt.bufPrintSentinel(&buf, "#{x:02}{x:02}{x:02}", .{ color.r, color.g, color.b }, 0) catch unreachable;
-        microui.drawControlText(view[0..], rect, c_microui.MU_COLOR_TEXT, c_microui.MU_OPT_ALIGNCENTER);
+        const view = std.fmt.bufPrintSentinel(&buf, "#{x:02}{x:02}{x:02}", .{ preview_color.r, preview_color.g, preview_color.b }, 0) catch unreachable;
+        microui.drawControlText(view[0..], rect, MicroUI.style.COLOR_TEXT, c_microui.MU_OPT_ALIGNCENTER);
     }
 }

@@ -25,7 +25,7 @@ pub const LogBuf = struct {
 var log_input_buf: [128:0]u8 = [_:0]u8{0} ** 128;
 
 pub fn logWindow(microui: *MicroUI, logbuf: *LogBuf) !void {
-    if (!microui.beginWindow("Log Window", c_microui.mu_rect(350, 40, 300, 200))) return;
+    if (!microui.beginWindow("Log Window", MicroUI.Rect.init(350, 40, 300, 200))) return;
     defer microui.endWindow();
 
     microui.layoutRow(&[_]i32{-1}, -25);
