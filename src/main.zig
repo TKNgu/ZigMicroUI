@@ -7,7 +7,6 @@ const render = graphic.render;
 const style = @import("style.zig");
 const math = graphic.math;
 const MicroUI = @import("microui/microui.zig").MicroUI;
-const uint8Slider = @import("microui/slider.zig").uint8Slider;
 const styleWindow = @import("ui/style_window.zig").styleWindow;
 const LogBuf = @import("ui/log_window.zig").LogBuf;
 const logWindow = @import("ui/log_window.zig").logWindow;
@@ -71,7 +70,6 @@ pub fn main(init: std.process.Init) !void {
     const windowHeight: i32 = 640;
     var windowOption: ?*sdl.SDL_Window = null;
     var renderOption: ?*sdl.SDL_Renderer = null;
-    // sdl.SDL_WINDOW_VULKAN,
     if (!sdl.SDL_CreateWindowAndRenderer(
         "TheGame",
         windowWidth,
