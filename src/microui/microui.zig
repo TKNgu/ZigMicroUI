@@ -1,10 +1,45 @@
 const std = @import("std");
 const c_microui = @import("c_microui");
 
+fn CreateStack(comptime T: type, comptime items: usize) type {
+    return struct {
+        idx: usize = 0,
+        items: [items]T = [_]T{undefined} ** items,
+
+        pub fn push(self: *@This(), val: T) void {
+            std.debug.assert(self.*.idx < self.*.items.len);
+            self.*.items[@intCast(self.*.idx)] = val;
+            self.*.idx += 1;
+        }
+
+        pub fn pop(self: *@This()) void {
+            std.debug.assert(self.*.idx > 0);
+            self.*.idx -= 1;
+        }
+
+        pub fn peek(self: *@This()) T {
+            std.debug.assert(self.*.idx > 0);
+            return self.*.items[@intCast(self.*.idx - 1)];
+        }
+    };
+}
+
 fn push(stk: anytype, val: anytype) void {
     std.debug.assert(stk.*.idx < stk.*.items.len);
     stk.*.items[@intCast(stk.*.idx)] = val;
     stk.*.idx += 1;
+}
+
+fn pop(stk: anytype) void {
+    std.debug.assert(stk.*.idx > 0);
+    stk.*.idx -= 1;
+}
+
+fn peek(stk: anytype) ?*anyopaque {
+    if (stk.*.idx > 0) {
+        return stk.*.items[@intCast(stk.*.idx - 1)];
+    }
+    return null;
 }
 
 pub const MicroUI = struct {
