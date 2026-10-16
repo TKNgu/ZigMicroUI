@@ -1,12 +1,11 @@
 const std = @import("std");
-const c_microui = @import("c_microui");
-
 const graphic = @import("graphic");
 const sdl = graphic.sdl;
 const render = graphic.render;
 const style = @import("style.zig");
 const math = graphic.math;
-const MicroUI = @import("microui/microui.zig").MicroUI;
+const microui_mod = @import("microui/microui.zig");
+const MicroUI = microui_mod.MicroUI;
 const styleWindow = @import("ui/style_window.zig").styleWindow;
 const LogBuf = @import("ui/log_window.zig").LogBuf;
 const logWindow = @import("ui/log_window.zig").logWindow;
@@ -23,27 +22,18 @@ var checks: [3]i32 = [_]i32{ 1, 0, 1 };
 
 var render_engine: graphic.render.RenderEngine = undefined;
 
-fn textWidth(_: c_microui.mu_Font, text: [*c]const u8, len: c_int) callconv(.c) c_int {
+fn textWidth(_: microui_mod.Font, text: [*c]const u8, len: c_int) callconv(.c) c_int {
+    if (text == null) return 0;
     if (len < 0) {
         const slice = std.mem.span(text);
-        var width: i32 = 0;
-        for (slice) |c| {
-            const char_rect = render_engine.font_atlas.getCharSize(c) catch continue;
-            width += @intFromFloat(char_rect.x);
-        }
-        return width;
+        return render_engine.getTextWidth(slice) catch 0;
     } else {
         const ulen: usize = @intCast(len);
-        var width: i32 = 0;
-        for (text[0..ulen]) |c| {
-            const char_rect = render_engine.font_atlas.getCharSize(c) catch continue;
-            width += @intFromFloat(char_rect.x);
-        }
-        return width;
+        return render_engine.getTextWidth(text[0..ulen]) catch 0;
     }
 }
 
-fn textHeight(_: c_microui.mu_Font) callconv(.c) c_int {
+fn textHeight(_: microui_mod.Font) callconv(.c) c_int {
     return 22;
 }
 
@@ -110,18 +100,18 @@ pub fn main(init: std.process.Init) !void {
     defer render_engine.deinit();
 
     // Init microui
-    button_map[sdl.SDL_BUTTON_LEFT & 0xff] = c_microui.MU_MOUSE_LEFT;
-    button_map[sdl.SDL_BUTTON_RIGHT & 0xff] = c_microui.MU_MOUSE_RIGHT;
-    button_map[sdl.SDL_BUTTON_MIDDLE & 0xff] = c_microui.MU_MOUSE_MIDDLE;
+    button_map[sdl.SDL_BUTTON_LEFT & 0xff] = microui_mod.Mouse.LEFT;
+    button_map[sdl.SDL_BUTTON_RIGHT & 0xff] = microui_mod.Mouse.RIGHT;
+    button_map[sdl.SDL_BUTTON_MIDDLE & 0xff] = microui_mod.Mouse.MIDDLE;
 
-    key_map[sdl.SDLK_LSHIFT & 0xff] = c_microui.MU_KEY_SHIFT;
-    key_map[sdl.SDLK_RSHIFT & 0xff] = c_microui.MU_KEY_SHIFT;
-    key_map[sdl.SDLK_LCTRL & 0xff] = c_microui.MU_KEY_CTRL;
-    key_map[sdl.SDLK_RCTRL & 0xff] = c_microui.MU_KEY_CTRL;
-    key_map[sdl.SDLK_LALT & 0xff] = c_microui.MU_KEY_ALT;
-    key_map[sdl.SDLK_RALT & 0xff] = c_microui.MU_KEY_ALT;
-    key_map[sdl.SDLK_RETURN & 0xff] = c_microui.MU_KEY_RETURN;
-    key_map[sdl.SDLK_BACKSPACE & 0xff] = c_microui.MU_KEY_BACKSPACE;
+    key_map[sdl.SDLK_LSHIFT & 0xff] = microui_mod.Key.SHIFT;
+    key_map[sdl.SDLK_RSHIFT & 0xff] = microui_mod.Key.SHIFT;
+    key_map[sdl.SDLK_LCTRL & 0xff] = microui_mod.Key.CTRL;
+    key_map[sdl.SDLK_RCTRL & 0xff] = microui_mod.Key.CTRL;
+    key_map[sdl.SDLK_LALT & 0xff] = microui_mod.Key.ALT;
+    key_map[sdl.SDLK_RALT & 0xff] = microui_mod.Key.ALT;
+    key_map[sdl.SDLK_RETURN & 0xff] = microui_mod.Key.RETURN;
+    key_map[sdl.SDLK_BACKSPACE & 0xff] = microui_mod.Key.BACKSPACE;
 
     var microui = try MicroUI.init(allocator, textWidth, textHeight);
     defer microui.deinit(allocator);
@@ -197,8 +187,7 @@ pub fn main(init: std.process.Init) !void {
                 count += 1;
                 switch (c.*.type) {
                     .text => {
-                        const str_ptr: [*:0]const u8 = @ptrCast(&(cmd.?.text.text[0]));
-                        const s = std.mem.span(str_ptr);
+                        const s = cmd.?.text.getSlice();
                         const rect = cmd.?.text.pos;
                         render_engine.drawText(s, math.vec.Vec2(f32).init(
                             @as(f32, @floatFromInt(rect.x)),

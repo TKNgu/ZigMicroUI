@@ -28,26 +28,6 @@ pub fn build(b: *std.Build) void {
     graphic.linkSystemLibrary("harfbuzz", .{});
     graphic.linkSystemLibrary("c", .{});
 
-    // microui.c
-    const c_microui_translate_c = b.addTranslateC(.{
-        .root_source_file = b.path("src/microui/microui.h"),
-        .target = target,
-        .optimize = optimize,
-    });
-    c_microui_translate_c.addIncludePath(b.path("src/microui/"));
-    c_microui_translate_c.addSystemIncludePath(.{
-        .cwd_relative = "/usr/include",
-    });
-
-    const c_microui = c_microui_translate_c.createModule();
-    c_microui.addCSourceFiles(.{
-        .root = b.path("src/microui/"),
-        .files = &.{
-            "microui.c",
-        },
-    });
-    c_microui.linkSystemLibrary("c", .{});
-
     const exe = b.addExecutable(.{
         .name = "ZigMicroUI",
         .root_module = b.createModule(.{
@@ -56,7 +36,6 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "graphic", .module = graphic },
-                .{ .name = "c_microui", .module = c_microui },
             },
         }),
     });

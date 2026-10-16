@@ -1058,7 +1058,7 @@ pub const FontAtlas = struct {
         for (BEGIN..END) |c| {
             const text: [1:0]u8 = .{@intCast(c)};
             const char_surface = font.renderTextSurface(&text, text_color) catch |err| {
-                for (surfaces[0 .. c - END]) |surface| {
+                for (surfaces[0 .. c - BEGIN]) |surface| {
                     sdl.SDL_DestroySurface(surface);
                 }
                 return err;
@@ -1080,8 +1080,17 @@ pub const FontAtlas = struct {
         }
 
         const size: i32 = @intFromFloat(std.math.sqrt(@as(f32, @floatFromInt(texture_area))));
-        const size_width = size + max_size.x;
-        const size_height = size + max_size.y;
+        const size_width: i32 = @max(size + max_size.x * 2, 256);
+        var sim_x: i32 = 0;
+        var sim_rows: i32 = 1;
+        for (surfaces) |s| {
+            if (sim_x + s.*.w > size_width) {
+                sim_x = 0;
+                sim_rows += 1;
+            }
+            sim_x += s.*.w;
+        }
+        const size_height: i32 = (sim_rows + 1) * max_size.y;
         const atlas_surface = sdl.SDL_CreateSurface(size_width, size_height, sdl.SDL_PIXELFORMAT_RGBA8888);
         if (atlas_surface == null) {
             return error.SDLCreateSurfaceFailed;
@@ -1089,9 +1098,12 @@ pub const FontAtlas = struct {
         defer sdl.SDL_DestroySurface(atlas_surface);
 
         var offset: math.vec.Vec2(i32) = .{ .x = 0, .y = 0 };
-        var atlas_rects: [END + 1]math.rect.Rect2(f32) = undefined;
-        var index = BEGIN;
-        for (surfaces) |src_surface| {
+        var atlas_rects = [_]math.rect.Rect2(f32){math.rect.Rect2(f32).init(0, 0, 0, 0)} ** (END + 1);
+        for (surfaces, BEGIN..) |src_surface, c| {
+            if (offset.x + src_surface.*.w > size_width) {
+                offset.x = 0;
+                offset.y += max_size.y;
+            }
             const dst_rect: sdl.SDL_Rect = .{
                 .x = offset.x,
                 .y = offset.y,
@@ -1101,13 +1113,7 @@ pub const FontAtlas = struct {
             if (!sdl.SDL_BlitSurface(src_surface, null, atlas_surface, &dst_rect)) {
                 return error.SDLBlitSurfaceFailed;
             }
-            offset.x += src_surface.*.w;
-            if (offset.x + max_size.x > size_width) {
-                offset.x = 0;
-                offset.y += src_surface.*.h;
-            }
-            index += 1;
-            atlas_rects[index] = math.rect.Rect2(f32).initVec(
+            atlas_rects[c] = math.rect.Rect2(f32).initVec(
                 math.vec.Vec2(f32).init(
                     @floatFromInt(offset.x),
                     @floatFromInt(offset.y),
@@ -1117,6 +1123,7 @@ pub const FontAtlas = struct {
                     @floatFromInt(src_surface.*.h),
                 ),
             );
+            offset.x += src_surface.*.w;
         }
 
         const atlas_texture = Texture.init_from_surface(atlas_surface, renderer) catch |err| {
@@ -1137,6 +1144,9 @@ pub const FontAtlas = struct {
     pub fn renderChar(self: *FontAtlas, renderer: *Renderer, char: u8, dst_location: ?math.vec.Vec2(f32)) !void {
         if (char < BEGIN or char > END) {
             return error.InvalidChar;
+        }
+        if (char == ' ') {
+            return;
         }
         const src_rect = self.atlas_rects[char];
         const dst_rect = if (dst_location) |dst| RECT: {

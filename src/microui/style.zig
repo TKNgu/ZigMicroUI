@@ -1,42 +1,38 @@
+//! MicroUI Style & Theme Module
+//!
+//! Quản lý màu sắc, kích thước lề/đệm và giao diện tổng thể của hệ thống UI.
+
 const std = @import("std");
-const c_microui = @import("c_microui");
 const math = @import("math.zig");
 const Vec2 = math.Vec2;
 
+/// Đại diện kiểu con trỏ font mờ (opaque pointer), tương thích với backend render đồ họa.
 pub const Font = ?*anyopaque;
 
+/// Cấu trúc màu RGBA chuẩn 32-bit (mỗi kênh 8-bit).
 pub const Color = extern struct {
     r: u8 = 0,
     g: u8 = 0,
     b: u8 = 0,
     a: u8 = 255,
 
+    /// Khởi tạo màu với đầy đủ các kênh R, G, B, A.
     pub fn init(r: u8, g: u8, b: u8, a: u8) Color {
         return .{ .r = r, .g = g, .b = b, .a = a };
     }
 
+    /// Khởi tạo màu RGB với độ mờ mặc định (alpha = 255).
     pub fn rgb(r: u8, g: u8, b: u8) Color {
         return .{ .r = r, .g = g, .b = b, .a = 255 };
     }
-
-    pub fn toMu(self: Color) c_microui.mu_Color {
-        return .{ .r = self.r, .g = self.g, .b = self.b, .a = self.a };
-    }
-
-    pub fn fromMu(c: c_microui.mu_Color) Color {
-        return .{ .r = c.r, .g = c.g, .b = c.b, .a = c.a };
-    }
 };
 
-pub fn color(r: u8, g: u8, b: u8, a: u8) Color {
-    return Color.init(r, g, b, a);
-}
+/// Hàm tiện ích tạo nhanh Color.
+pub const color = Color.init;
+pub const rgb = Color.rgb;
 
-pub fn rgb(r: u8, g: u8, b: u8) Color {
-    return Color.rgb(r, g, b);
-}
-
-pub const ColorId = enum(c_int) {
+/// Định danh các màu sắc trong bảng theme giao diện MicroUI.
+pub const ColorId = enum(i32) {
     text = 0,
     border = 1,
     window_bg = 2,
@@ -69,7 +65,7 @@ pub const ColorId = enum(c_int) {
     pub const scroll_base_idx: usize = 12;
     pub const scroll_thumb_idx: usize = 13;
 
-    pub fn toInt(self: ColorId) c_int {
+    pub fn toInt(self: ColorId) i32 {
         return @intFromEnum(self);
     }
 
@@ -78,6 +74,7 @@ pub const ColorId = enum(c_int) {
     }
 };
 
+// Các hằng số định danh màu để truy cập nhanh
 pub const COLOR_TEXT = ColorId.text.toInt();
 pub const COLOR_BORDER = ColorId.border.toInt();
 pub const COLOR_WINDOWBG = ColorId.window_bg.toInt();
@@ -93,6 +90,7 @@ pub const COLOR_BASEFOCUS = ColorId.base_focus.toInt();
 pub const COLOR_SCROLLBASE = ColorId.scroll_base.toInt();
 pub const COLOR_SCROLLTHUMB = ColorId.scroll_thumb.toInt();
 
+/// Bảng màu mặc định theo phong cách tối thanh lịch.
 pub const default_colors = [ColorId.count]Color{
     Color.init(230, 230, 230, 255), // text
     Color.init(25, 25, 25, 255),    // border
@@ -110,39 +108,28 @@ pub const default_colors = [ColorId.count]Color{
     Color.init(30, 30, 30, 255),    // scroll_thumb
 };
 
+/// Cấu hình phong cách và thông số kích thước giao diện.
 pub const Style = extern struct {
     font: Font = null,
     size: Vec2 = .{ .x = 68, .y = 10 },
-    padding: c_int = 5,
-    spacing: c_int = 4,
-    indent: c_int = 24,
-    title_height: c_int = 24,
-    scrollbar_size: c_int = 12,
-    thumb_size: c_int = 8,
+    padding: i32 = 5,
+    spacing: i32 = 4,
+    indent: i32 = 24,
+    title_height: i32 = 24,
+    scrollbar_size: i32 = 12,
+    thumb_size: i32 = 8,
     colors: [ColorId.count]Color = default_colors,
 
+    /// Lấy màu tương ứng với ColorId.
     pub fn getColor(self: *const Style, id: ColorId) Color {
         return self.colors[id.toIndex()];
     }
 
+    /// Thiết lập màu tương ứng với ColorId.
     pub fn setColor(self: *Style, id: ColorId, c: Color) void {
         self.colors[id.toIndex()] = c;
     }
-
-    pub fn toMu(self: *const Style) *const c_microui.mu_Style {
-        return @ptrCast(self);
-    }
-
-    pub fn fromMu(s: *c_microui.mu_Style) *Style {
-        return @ptrCast(s);
-    }
 };
 
+/// Phong cách mặc định của toàn hệ thống.
 pub const default_style: Style = .{};
-
-comptime {
-    std.debug.assert(@sizeOf(Color) == @sizeOf(c_microui.mu_Color));
-    std.debug.assert(@alignOf(Color) == @alignOf(c_microui.mu_Color));
-    std.debug.assert(@sizeOf(Style) == @sizeOf(c_microui.mu_Style));
-    std.debug.assert(@alignOf(Style) == @alignOf(c_microui.mu_Style));
-}

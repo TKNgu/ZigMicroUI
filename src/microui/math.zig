@@ -1,44 +1,37 @@
-const c_microui = @import("c_microui");
+//! MicroUI Math Module
+//!
+//! Cung cấp các cấu trúc hình học cơ bản (Vec2, Rect) và các hàm toán học
+//! phục vụ tính toán layout, clipping và hit-testing trong hệ thống UI.
 
+/// Vector 2 chiều đại diện cho toạ độ điểm (x, y) hoặc kích thước (width, height) kiểu số nguyên i32.
 pub const Vec2 = extern struct {
     x: i32 = 0,
     y: i32 = 0,
 
+    /// Khởi tạo Vec2 với toạ độ x, y.
     pub fn init(x: i32, y: i32) Vec2 {
         return .{ .x = x, .y = y };
     }
-
-    pub fn toMu(self: Vec2) c_microui.mu_Vec2 {
-        return .{ .x = self.x, .y = self.y };
-    }
-
-    pub fn fromMu(v: c_microui.mu_Vec2) Vec2 {
-        return .{ .x = v.x, .y = v.y };
-    }
 };
 
+/// Hàm tiện ích tạo nhanh Vec2.
 pub fn vec2(x: i32, y: i32) Vec2 {
-    return .{ .x = x, .y = y };
+    return Vec2.init(x, y);
 }
 
+/// Hình chữ nhật đại diện cho vị trí (x, y) và kích thước (w, h) của một thành phần UI.
 pub const Rect = extern struct {
     x: i32 = 0,
     y: i32 = 0,
     w: i32 = 0,
     h: i32 = 0,
 
+    /// Khởi tạo Rect với toạ độ và kích thước cụ thể.
     pub fn init(x: i32, y: i32, w: i32, h: i32) Rect {
         return .{ .x = x, .y = y, .w = w, .h = h };
     }
 
-    pub fn toMu(self: Rect) c_microui.mu_Rect {
-        return .{ .x = self.x, .y = self.y, .w = self.w, .h = self.h };
-    }
-
-    pub fn fromMu(r: c_microui.mu_Rect) Rect {
-        return .{ .x = r.x, .y = r.y, .w = r.w, .h = r.h };
-    }
-
+    /// Mở rộng hình chữ nhật về cả 4 phía một khoảng `n` pixel.
     pub fn expand(self: Rect, n: i32) Rect {
         return .{
             .x = self.x - n,
@@ -48,6 +41,7 @@ pub const Rect = extern struct {
         };
     }
 
+    /// Tính phần giao nhau giữa 2 hình chữ nhật (dùng trong tính toán vùng cắt clip).
     pub fn intersect(r1: Rect, r2: Rect) Rect {
         const x1 = @max(r1.x, r2.x);
         const y1 = @max(r1.y, r2.y);
@@ -60,11 +54,13 @@ pub const Rect = extern struct {
         }
     }
 
+    /// Kiểm tra toạ độ điểm `p` có nằm bên trong hình chữ nhật hay không.
     pub fn overlapsVec2(self: Rect, p: Vec2) bool {
         return p.x >= self.x and p.x < self.x + self.w and p.y >= self.y and p.y < self.y + self.h;
     }
 };
 
+/// Hàm tiện ích tạo nhanh Rect.
 pub fn rect(x: i32, y: i32, w: i32, h: i32) Rect {
-    return .{ .x = x, .y = y, .w = w, .h = h };
+    return Rect.init(x, y, w, h);
 }

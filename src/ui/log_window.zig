@@ -1,6 +1,6 @@
 const std = @import("std");
-const c_microui = @import("c_microui");
-const MicroUI = @import("../microui/microui.zig").MicroUI;
+const microui_mod = @import("../microui/microui.zig");
+const MicroUI = microui_mod.MicroUI;
 
 pub const LogBuf = struct {
     buf: [64000:0]u8 = [_:0]u8{0} ** 64000,
@@ -45,7 +45,7 @@ pub fn logWindow(microui: *MicroUI, logbuf: *LogBuf) !void {
 
     var submitted: i32 = 0;
     microui.layoutRow(&[_]i32{ -70, -1 }, 0);
-    if (microui.textBox(&log_input_buf, 128) & c_microui.MU_RES_SUBMIT != 0) {
+    if (microui.textBox(&log_input_buf, 128) & microui_mod.Res.SUBMIT != 0) {
         const addr = @intFromPtr(&log_input_buf);
         microui.setFocus(microui.getId(@ptrCast(&addr), @sizeOf(usize)));
         submitted = 1;

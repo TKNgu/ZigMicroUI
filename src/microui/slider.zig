@@ -1,5 +1,5 @@
-const c_microui = @import("c_microui");
-const MicroUI = @import("microui.zig").MicroUI;
+const microui_mod = @import("microui.zig");
+const MicroUI = microui_mod.MicroUI;
 
 pub fn uint8Slider(microui: *MicroUI, value: *u8, low: i32, high: i32) i32 {
     const addr = @intFromPtr(value);
@@ -12,7 +12,7 @@ pub fn uint8Slider(microui: *MicroUI, value: *u8, low: i32, high: i32) i32 {
         @floatFromInt(high),
         0,
         "%.0f",
-        c_microui.MU_OPT_ALIGNCENTER,
+        microui_mod.Opt.ALIGNCENTER,
     );
     value.* = @intFromFloat(tmp);
     _ = microui.id_stack.pop();

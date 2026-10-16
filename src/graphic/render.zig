@@ -169,20 +169,44 @@ pub const RenderEngine = struct {
         }
     }
 
-    pub fn getTextWidth(self: *RenderEngine, text: [:0]const u8) !i32 {
+    pub fn getTextWidth(self: *RenderEngine, text: []const u8) !i32 {
         var width: i32 = 0;
         for (text) |c| {
+            if (c == '\t') {
+                if (self.font_atlas.getCharSize(' ')) |space_size| {
+                    width += @as(i32, @intFromFloat(space_size.x)) * 4;
+                } else |_| {
+                    width += 32;
+                }
+                continue;
+            }
             const char_rect = try self.font_atlas.getCharSize(c);
             width += @intFromFloat(char_rect.x);
         }
         return width;
     }
 
-    pub fn drawText(self: *RenderEngine, text: [:0]const u8, location: math.vec.Vec2(f32)) !void {
+    pub fn drawText(self: *RenderEngine, text: []const u8, location: math.vec.Vec2(f32)) !void {
         var offset = location;
         for (text) |c| {
-            try self.font_atlas.renderChar(self.renderer, c, offset);
-            const char_rect = try self.font_atlas.getCharSize(c);
+            if (c == '\t') {
+                if (self.font_atlas.getCharSize(' ')) |space_size| {
+                    offset.x += space_size.x * 4;
+                } else |_| {
+                    offset.x += 32;
+                }
+                continue;
+            }
+            if (c == ' ') {
+                if (self.font_atlas.getCharSize(' ')) |space_size| {
+                    offset.x += space_size.x;
+                } else |_| {
+                    offset.x += 8;
+                }
+                continue;
+            }
+            _ = self.font_atlas.renderChar(self.renderer, c, offset) catch {};
+            const char_rect = self.font_atlas.getCharSize(c) catch continue;
             offset.x += char_rect.x;
         }
     }

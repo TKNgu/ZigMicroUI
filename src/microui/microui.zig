@@ -1,5 +1,14 @@
+//! MicroUI - Thư viện Immediate Mode GUI thuần Zig
+//!
+//! Thiết kế và kiến trúc:
+//! 1. Immediate Mode UI: Giao diện được dựng lại mỗi frame theo phong cách phản ứng (declarative/immediate).
+//! 2. Zero Runtime Heap Allocation: Sử dụng các Stack tĩnh (BuildStack) và bộ nhớ đệm lệnh (FixedBufferAllocator)
+//!    giúp loại bỏ cấp phát heap trong vòng lặp render chính.
+//! 3. Layout Engine: Hệ thống bố cục theo hàng (Row Layout) linh hoạt, hỗ trợ độ rộng cố định, tự động chia đều,
+//!    lùi dòng (indentation) và chia cột đa tầng (nested columns).
+//! 4. State Pools: Quản lý trạng thái mở/đóng của TreeNode và vị trí scroll của Container thông qua các pool tĩnh.
+
 const std = @import("std");
-const c_microui = @import("c_microui");
 const stack = @import("stack.zig");
 pub const math = @import("math.zig");
 pub const Rect = math.Rect;
@@ -8,28 +17,153 @@ const style_mod = @import("style.zig");
 pub const style = style_mod;
 const command_mod = @import("command.zig");
 
-const Container = struct {
-    // head: [*c]c_microui.mu_Command = null,
-    // tail: [*c]c_microui.mu_Command = null,
+// =============================================================================
+// 1. CONSTANTS, ENUMS & COMPATIBILITY ALIASES
+// =============================================================================
+
+pub const Id = u32;
+pub const Font = style_mod.Font;
+pub const MAX_WIDTHS: usize = 16;
+pub const MAX_FMT: usize = 127;
+pub const SLIDER_FMT = "%.2f";
+
+/// Cắt khung hiển thị (Clipping).
+pub const Clip = struct {
+    pub const PART: i32 = 1;
+    pub const ALL: i32 = 2;
+};
+
+/// Tùy chọn cấu hình cho Cửa sổ (Window), Bảng (Panel) và Widget.
+pub const Opt = struct {
+    pub const ALIGNCENTER: i32 = (1 << 0);
+    pub const ALIGNRIGHT: i32 = (1 << 1);
+    pub const NOINTERACT: i32 = (1 << 2);
+    pub const NOFRAME: i32 = (1 << 3);
+    pub const NORESIZE: i32 = (1 << 4);
+    pub const NOSCROLL: i32 = (1 << 5);
+    pub const NOCLOSE: i32 = (1 << 6);
+    pub const NOTITLE: i32 = (1 << 7);
+    pub const HOLDFOCUS: i32 = (1 << 8);
+    pub const AUTOSIZE: i32 = (1 << 9);
+    pub const POPUP: i32 = (1 << 10);
+    pub const CLOSED: i32 = (1 << 11);
+    pub const EXPANDED: i32 = (1 << 12);
+};
+
+/// Kết quả phản hồi từ tương tác của người dùng trên widget.
+pub const Res = struct {
+    pub const ACTIVE: i32 = (1 << 0);
+    pub const SUBMIT: i32 = (1 << 1);
+    pub const CHANGE: i32 = (1 << 2);
+};
+
+/// Mã các nút chuột.
+pub const Mouse = struct {
+    pub const LEFT: i32 = (1 << 0);
+    pub const RIGHT: i32 = (1 << 1);
+    pub const MIDDLE: i32 = (1 << 2);
+};
+
+/// Mã các phím bổ trợ và phím điều khiển bàn phím.
+pub const Key = struct {
+    pub const SHIFT: i32 = (1 << 0);
+    pub const CTRL: i32 = (1 << 1);
+    pub const ALT: i32 = (1 << 2);
+    pub const BACKSPACE: i32 = (1 << 3);
+    pub const RETURN: i32 = (1 << 4);
+};
+
+/// Định danh các biểu tượng (Icon) chuẩn.
+pub const Icon = struct {
+    pub const CLOSE: i32 = 1;
+    pub const CHECK: i32 = 2;
+    pub const COLLAPSED: i32 = 3;
+    pub const EXPANDED: i32 = 4;
+};
+
+// Aliases tương thích ngược với API gốc
+pub const MU_CLIP_PART = Clip.PART;
+pub const MU_CLIP_ALL = Clip.ALL;
+
+pub const MU_OPT_ALIGNCENTER = Opt.ALIGNCENTER;
+pub const MU_OPT_ALIGNRIGHT = Opt.ALIGNRIGHT;
+pub const MU_OPT_NOINTERACT = Opt.NOINTERACT;
+pub const MU_OPT_NOFRAME = Opt.NOFRAME;
+pub const MU_OPT_NORESIZE = Opt.NORESIZE;
+pub const MU_OPT_NOSCROLL = Opt.NOSCROLL;
+pub const MU_OPT_NOCLOSE = Opt.NOCLOSE;
+pub const MU_OPT_NOTITLE = Opt.NOTITLE;
+pub const MU_OPT_HOLDFOCUS = Opt.HOLDFOCUS;
+pub const MU_OPT_AUTOSIZE = Opt.AUTOSIZE;
+pub const MU_OPT_POPUP = Opt.POPUP;
+pub const MU_OPT_CLOSED = Opt.CLOSED;
+pub const MU_OPT_EXPANDED = Opt.EXPANDED;
+
+pub const MU_RES_ACTIVE = Res.ACTIVE;
+pub const MU_RES_SUBMIT = Res.SUBMIT;
+pub const MU_RES_CHANGE = Res.CHANGE;
+
+pub const MU_MOUSE_LEFT = Mouse.LEFT;
+pub const MU_MOUSE_RIGHT = Mouse.RIGHT;
+pub const MU_MOUSE_MIDDLE = Mouse.MIDDLE;
+
+pub const MU_KEY_SHIFT = Key.SHIFT;
+pub const MU_KEY_CTRL = Key.CTRL;
+pub const MU_KEY_ALT = Key.ALT;
+pub const MU_KEY_BACKSPACE = Key.BACKSPACE;
+pub const MU_KEY_RETURN = Key.RETURN;
+
+pub const MU_ICON_CLOSE = Icon.CLOSE;
+pub const MU_ICON_CHECK = Icon.CHECK;
+pub const MU_ICON_COLLAPSED = Icon.COLLAPSED;
+pub const MU_ICON_EXPANDED = Icon.EXPANDED;
+
+pub const MU_MAX_WIDTHS = MAX_WIDTHS;
+pub const MU_MAX_FMT = MAX_FMT;
+pub const MU_SLIDER_FMT = SLIDER_FMT;
+
+// =============================================================================
+// 2. CORE LAYOUT & CONTAINER TYPES
+// =============================================================================
+
+/// Trạng thái bố cục của một hàng hoặc vùng chứa hiện tại.
+pub const Layout = struct {
+    body: math.Rect = .{},
+    next: math.Rect = .{},
+    position: math.Vec2 = .{},
+    size: math.Vec2 = .{},
+    max: math.Vec2 = .{},
+    widths: [MAX_WIDTHS]i32 = [_]i32{0} ** MAX_WIDTHS,
+    items: i32 = 0,
+    item_index: i32 = 0,
+    next_row: i32 = 0,
+    next_type: i32 = 0,
+    indent: i32 = 0,
+};
+
+/// Phần tử lưu vết trong pool lưu trữ trạng thái tồn tại qua các frame.
+pub const PoolItem = struct {
+    id: Id = 0,
+    last_update: i32 = 0,
+};
+
+/// Vùng chứa (Cửa sổ, Panel, Popup) quản lý chuỗi lệnh vẽ và vị trí cuộn.
+pub const Container = struct {
     head: ?*command_mod.Command = null,
     tail: ?*command_mod.Command = null,
-    rect: c_microui.mu_Rect = @import("std").mem.zeroes(c_microui.mu_Rect),
-    body: c_microui.mu_Rect = @import("std").mem.zeroes(c_microui.mu_Rect),
-    content_size: c_microui.mu_Vec2 = @import("std").mem.zeroes(c_microui.mu_Vec2),
-    scroll: c_microui.mu_Vec2 = @import("std").mem.zeroes(c_microui.mu_Vec2),
-    zindex: c_int = 0,
-    open: c_int = 0,
+    rect: math.Rect = .{},
+    body: math.Rect = .{},
+    content_size: math.Vec2 = .{},
+    scroll: math.Vec2 = .{},
+    zindex: i32 = 0,
+    open: i32 = 0,
 };
 
 // =============================================================================
-// ZIG STRING & FLOAT FORMATTING HELPERS
+// 3. TEXT & NUMERIC FORMATTING HELPERS
 // =============================================================================
 
 /// Định dạng số thực (f32) thành chuỗi kết thúc bằng null theo định dạng printf (ví dụ: "%.2f", "%.0f").
-///
-/// Thuật toán & Thiết kế:
-/// - Trích xuất số chữ số thập phân (precision) từ chuỗi định dạng `fmt`.
-/// - Sử dụng `std.fmt.bufPrintSentinel` của Zig để in giá trị số thực chính xác vào `buf` kèm sentinel `0`.
 fn formatReal(buf: []u8, fmt: [*c]const u8, val: f32) [:0]const u8 {
     if (buf.len == 0) return "";
     const span = if (fmt != null) std.mem.span(fmt) else "";
@@ -59,276 +193,167 @@ fn formatReal(buf: []u8, fmt: [*c]const u8, val: f32) [:0]const u8 {
     }
 }
 
+// =============================================================================
+// 4. MICRON UI CONTEXT STRUCT
+// =============================================================================
+
+/// Đối tượng trung tâm quản lý toàn bộ trạng thái vòng lặp giao diện MicroUI.
 pub const MicroUI = struct {
     pub const Rect = math.Rect;
     pub const Vec2 = math.Vec2;
-    pub const style = style_mod;
     pub const Style = style_mod.Style;
     pub const Color = style_mod.Color;
     pub const ColorId = style_mod.ColorId;
 
-    mu_context: *c_microui.mu_Context,
+    pub const COLOR_TEXT = style_mod.COLOR_TEXT;
+    pub const COLOR_BORDER = style_mod.COLOR_BORDER;
+    pub const COLOR_WINDOWBG = style_mod.COLOR_WINDOWBG;
+    pub const COLOR_TITLEBG = style_mod.COLOR_TITLEBG;
+    pub const COLOR_TITLETEXT = style_mod.COLOR_TITLETEXT;
+    pub const COLOR_PANELBG = style_mod.COLOR_PANELBG;
+    pub const COLOR_BUTTON = style_mod.COLOR_BUTTON;
+    pub const COLOR_BUTTONHOVER = style_mod.COLOR_BUTTONHOVER;
+    pub const COLOR_BUTTONFOCUS = style_mod.COLOR_BUTTONFOCUS;
+    pub const COLOR_BASE = style_mod.COLOR_BASE;
+    pub const COLOR_BASEHOVER = style_mod.COLOR_BASEHOVER;
+    pub const COLOR_BASEFOCUS = style_mod.COLOR_BASEFOCUS;
+    pub const COLOR_SCROLLBASE = style_mod.COLOR_SCROLLBASE;
+    pub const COLOR_SCROLLTHUMB = style_mod.COLOR_SCROLLTHUMB;
 
-    id_stack: stack.BuildStack(c_uint, 32) = .{},
+    pub const TextWidthFn = *const fn (font: Font, text: [*c]const u8, len: c_int) callconv(.c) c_int;
+    pub const TextHeightFn = *const fn (font: Font) callconv(.c) c_int;
+
+    // 4.1 State Fields & Stacks
+    style: Style = style_mod.default_style,
+    text_width: ?TextWidthFn = null,
+    text_height: ?TextHeightFn = null,
+
+    hover: Id = 0,
+    focus: Id = 0,
+    last_id: Id = 0,
+    last_rect: math.Rect = .{},
+
+    id_stack: stack.BuildStack(Id, 32) = .{},
     clip_stack: stack.BuildStack(math.Rect, 32) = .{},
-    layout_stack: stack.BuildStack(c_microui.mu_Layout, 16) = .{},
+    layout_stack: stack.BuildStack(Layout, 16) = .{},
     container_stack: stack.BuildStack(*Container, 32) = .{},
     root_list: stack.BuildStack(*Container, 32) = .{},
     hover_root: ?*Container = null,
     next_hover_root: ?*Container = null,
     scroll_target: ?*Container = null,
-    containers: [48]Container = undefined,
 
-    last_zindex: i32 = 0,
-    updated_focus: bool = false,
-    frame: usize = 0,
-    mouse_down: c_int = 0,
-    mouse_pressed: c_int = 0,
-    key_down: c_int = 0,
-    key_pressed: c_int = 0,
+    container_pool: [48]PoolItem = [_]PoolItem{.{}} ** 48,
+    containers: [48]Container = [_]Container{.{}} ** 48,
+    treenode_pool: [48]PoolItem = [_]PoolItem{.{}} ** 48,
 
     mouse_pos: math.Vec2 = .{},
     last_mouse_pos: math.Vec2 = .{},
     mouse_delta: math.Vec2 = .{},
     scroll_delta: math.Vec2 = .{},
+    mouse_down: i32 = 0,
+    mouse_pressed: i32 = 0,
+    key_down: i32 = 0,
+    key_pressed: i32 = 0,
+    input_text: [32:0]u8 = [_:0]u8{0} ** 32,
 
-    command_list: command_mod.CommandList,
+    number_edit: Id = 0,
+    number_edit_buf: [MAX_FMT:0]u8 = [_:0]u8{0} ** MAX_FMT,
+
+    last_zindex: i32 = 0,
+    updated_focus: bool = false,
+    frame: i32 = 0,
+
+    command_list: command_mod.CommandList = undefined,
 
     // =========================================================================
-    // 1. LIFECYCLE & CORE CONTEXT MANAGEMENT
+    // 4.2 Lifecycle Management
     // =========================================================================
 
-    const default_style = style_mod.default_style;
-
-    /// Lấy con trỏ tham chiếu đến cấu hình Style giao diện hiện tại của context.
-    pub fn getStyle(self: *const MicroUI) *Style {
-        return @ptrCast(self.mu_context.*.style);
+    /// Lấy con trỏ tham chiếu đến cấu hình Style giao diện hiện tại.
+    pub fn getStyle(self: *MicroUI) *Style {
+        return &self.style;
     }
 
-    /// Khởi tạo instance MicroUI và phân bổ bộ nhớ heap cho `mu_Context`.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Cấp phát bộ nhớ heap cho struct `mu_Context` thông qua allocator được truyền vào.
-    /// - Gọi `rawInit()` để thiết lập các giá trị mặc định cho style, bảng màu và bộ đệm.
-    /// - Gán các hàm callback đo kích thước font (`text_width`, `text_height`) vào context.
-    /// - Sử dụng `errdefer` để đảm bảo giải phóng bộ nhớ nếu có lỗi xảy ra trong quá trình khởi tạo.
+    /// Khởi tạo instance MicroUI thuần Zig.
     pub fn init(
         allocator: std.mem.Allocator,
-        text_width: fn (font: c_microui.mu_Font, text: [*c]const u8, len: c_int) callconv(.c) c_int,
-        text_height: fn (font: c_microui.mu_Font) callconv(.c) c_int,
+        text_width: TextWidthFn,
+        text_height: TextHeightFn,
     ) !MicroUI {
-        const ctx = try allocator.create(c_microui.mu_Context);
-        errdefer allocator.destroy(ctx);
-
         const command_list = try command_mod.CommandList.init(allocator);
         errdefer command_list.deinit(allocator);
 
-        @memset(@as([*]u8, @ptrCast(ctx))[0..@sizeOf(c_microui.mu_Context)], 0);
-        ctx.*._style = default_style.toMu().*;
-        ctx.*.style = &ctx.*._style;
-        ctx.*.text_width = text_width;
-        ctx.*.text_height = text_height;
-
         return .{
-            .mu_context = ctx,
+            .text_width = text_width,
+            .text_height = text_height,
             .command_list = command_list,
         };
     }
 
-    /// Hủy instance MicroUI và giải phóng tài nguyên heap của context.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Giải phóng vùng nhớ struct `mu_Context` đã cấp phát ban đầu thông qua allocator.
+    /// Hủy instance MicroUI và giải phóng tài nguyên buffer lệnh.
     pub fn deinit(self: *MicroUI, allocator: std.mem.Allocator) void {
         self.command_list.deinit(allocator);
-        allocator.destroy(self.mu_context);
     }
 
-    // Comand -----------------------------------------------
-    //
-    //
-    //
+    // =========================================================================
+    // 4.3 Command Buffer API
+    // =========================================================================
 
+    /// Xóa toàn bộ lệnh vẽ trong buffer.
     pub fn clearCommandList(self: *MicroUI) void {
-        // self.mu_context.*.command_list.idx = 0;
         self.command_list.clear();
     }
 
-    // /// Cấp phát và ghi một lệnh vẽ mới vào mảng lệnh tuyến tính (`command_list`).
-    // ///
-    // /// Thuật toán & Thiết kế:
-    // /// - Chuyển tiếp tới hàm nội bộ `rawPushCommand`.
-    // /// - Đảm bảo kích thước được căn chỉnh 8-byte và ghi nhận vào command stream.
-    // pub fn pushCommand(self: *MicroUI, cmd_type: c_int, size: c_int) [*c]c_microui.mu_Command {
-    //     const cmd: [*c]c_microui.mu_Command =
-    //         @ptrCast(@alignCast(&self.mu_context.*.command_list.items[@intCast(self.mu_context.*.command_list.idx)]));
-    //     const aligned_size = (size + 7) & ~@as(c_int, 7);
-    //     std.debug.assert(self.mu_context.*.command_list.idx + aligned_size < self.mu_context.*.command_list.items.len);
-    //     cmd.*.base.type = cmd_type;
-    //     cmd.*.base.size = aligned_size;
-    //     self.mu_context.*.command_list.idx += aligned_size;
-    //     return cmd;
-    // }
-
-    // /// Đẩy lệnh JUMP để chuyển tiếp luồng duyệt command list đến một vị trí đích.
-    // ///
-    // /// Thuật toán & Thiết kế:
-    // /// - Cấp phát một command kiểu `MU_COMMAND_JUMP` trong command buffer.
-    // /// - Gán con trỏ đích `jump.dst = dst`.
-    // pub fn pushJump(self: *MicroUI, dst: [*c]c_microui.mu_Command) [*c]c_microui.mu_Command {
-    //     self.command_list.pushJump(dst) catch unreachable;
-    //
-    //     // _ = self.command_list.pushJump(dst) catch unreachable;
-    //
-    //     // const cmd = self.pushCommand(c_microui.MU_COMMAND_JUMP, @sizeOf(c_microui.mu_JumpCommand));
-    //     // cmd.*.jump.dst = dst;
-    //     // return cmd;
-    // }
-
+    /// Đẩy một lệnh vẽ hình chữ nhật vào danh sách lệnh.
     pub fn pushRect(self: *MicroUI, draw_rect: math.Rect, color: Color) void {
-        // const cmd = self.pushCommand(c_microui.MU_COMMAND_RECT, @sizeOf(c_microui.mu_RectCommand));
-        const cmd = self.command_list.pushRect(draw_rect, color) catch unreachable;
-        // cmd.*.rect.rect = draw_rect.toMu();
-        cmd.*.rect.rect = draw_rect;
-        // cmd.*.rect.color = color.toMu();
-        cmd.*.rect.color = color;
+        _ = self.command_list.pushRect(draw_rect, color) catch unreachable;
     }
 
-    pub fn pushIcon(self: *MicroUI, id: c_int, draw_rect: math.Rect, color: Color) void {
-        // const cmd = self.pushCommand(c_microui.MU_COMMAND_ICON, @sizeOf(c_microui.mu_IconCommand));
-        const cmd = self.command_list.pushIcon(id, draw_rect, color) catch unreachable;
-        cmd.*.icon.id = id;
-        // cmd.*.icon.rect = draw_rect.toMu();
-        cmd.*.icon.rect = draw_rect;
-        // cmd.*.icon.color = color.toMu();
-        cmd.*.icon.color = color;
+    /// Đẩy một lệnh vẽ biểu tượng vào danh sách lệnh.
+    pub fn pushIcon(self: *MicroUI, id: i32, draw_rect: math.Rect, color: Color) void {
+        _ = self.command_list.pushIcon(id, draw_rect, color) catch unreachable;
     }
 
+    /// Đẩy một lệnh cắt khung nhìn (clipping) vào danh sách lệnh.
     pub fn pushClip(self: *MicroUI, r: math.Rect) void {
-        // const cmd = self.pushCommand(c_microui.MU_COMMAND_CLIP, @sizeOf(c_microui.mu_ClipCommand));
-        const cmd = self.command_list.pushClip(r) catch unreachable;
-        // cmd.*.clip.rect = r.toMu();
-        cmd.*.clip.rect = r;
+        _ = self.command_list.pushClip(r) catch unreachable;
     }
 
+    /// Đẩy một lệnh vẽ văn bản vào danh sách lệnh.
     pub fn pushText(
         self: *MicroUI,
         text: []const u8,
         pos: math.Vec2,
         color: Color,
-        font: c_microui.mu_Font,
+        font: Font,
     ) void {
         _ = self.command_list.pushText(text, pos, color, font) catch unreachable;
-
-        // // const cmd = self.pushCommand(
-        // //     c_microui.MU_COMMAND_TEXT,
-        // //     @sizeOf(c_microui.mu_TextCommand) + @as(c_int, @intCast(text.len)),
-        // // );
-        // // const cmd = self.command_list.pushCommand(command_mod.Type.text);
-        // const cmd = self.command_list.pushCommandText(text.len) catch unreachable;
-        //
-        // // const tmp: [*]u8 = @ptrCast(&cmd.*.text.str);
-        // const tmp: [*]u8 = @ptrCast(&cmd.*.text.text);
-        // @memcpy(tmp[0..text.len], text);
-        // tmp[text.len] = 0;
-        // cmd.*.text.pos = .{
-        //     .x = pos.x,
-        //     .y = pos.y,
-        // };
-        // // cmd.*.text.color = color.toMu();
-        // cmd.*.text.color = color;
-        // cmd.*.text.font = font;
     }
 
-    pub fn getBegin(self: *MicroUI) *command_mod.Command {
-        return self.command_list.getBegin().?;
-        // _ = self.command_list.getBegin();
-        //
-        // return @ptrCast(@alignCast(&self.mu_context.*.command_list.items));
+    /// Lấy con trỏ đến lệnh đầu tiên trong danh sách lệnh.
+    pub fn getBegin(self: *MicroUI) ?*command_mod.Command {
+        return self.command_list.getBegin();
     }
 
-    pub fn getEnd(self: *MicroUI) ?*anyopaque {
+    /// Lấy con trỏ đến lệnh cuối cùng trong danh sách lệnh.
+    pub fn getEnd(self: *MicroUI) ?*command_mod.Command {
         return self.command_list.getEnd();
-
-        // const tmp: ?*anyopaque =
-        //     @ptrCast(&self.mu_context.*.command_list.items[@intCast(self.mu_context.*.command_list.idx)]);
-        // return tmp;
     }
 
     /// Duyệt lệnh vẽ tiếp theo trong command buffer (Iterator).
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Nếu `cmd.* == null`: bắt đầu từ đầu buffer (`command_list.items`).
-    /// - Nếu `cmd.* != null`: tịnh tiến con trỏ theo kích thước `cmd.base.size`.
-    /// - Duyệt qua và giải quyết các bước nhảy `MU_COMMAND_JUMP` bằng cách chuyển con trỏ tới `jump.dst`.
-    /// - Dừng lại và trả về `1` khi gặp lệnh vẽ hợp lệ (Rect, Text, Icon, Clip).
-    /// - Trả về `0` khi đã duyệt hết toàn bộ chuỗi lệnh tới cuối buffer.
     pub fn nextCommand(self: *MicroUI, cmd: *?*command_mod.Command) bool {
         return self.command_list.getNextCommand(cmd);
-
-        // const items_ptr: [*]u8 = &self.mu_context.*.command_list.items;
-        //
-        // const end_ptr = items_ptr + @as(usize, @intCast(self.mu_context.*.command_list.idx));
-        // if (cmd.* != null) {
-        //     const raw: [*]u8 = @ptrCast(cmd.*);
-        //     cmd.* = @ptrCast(@alignCast(raw + @as(usize, @intCast(cmd.*.*.base.size))));
-        // } else {
-        //     cmd.* = @ptrCast(@alignCast(items_ptr));
-        // }
-        // while (@as([*]u8, @ptrCast(cmd.*)) != end_ptr) {
-        //     if (cmd.*.*.base.type != c_microui.MU_COMMAND_JUMP) {
-        //         return 1;
-        //     }
-        //     cmd.* = @ptrCast(@alignCast(cmd.*.*.jump.dst));
-        // }
-        // return 0;
-
-        // if (cmd.* == null) {
-        //     cmd.* = self.command_list.getBegin();
-        // } else {
-        //     var index: usize = 0;
-        //     while (index < self.command_list.commands.items.len) : (index += 1) {
-        //         if (cmd.* == self.command_list.items[index]) {
-        //             break;
-        //         }
-        //     }
-        //     if (index == self.command_list.items.len) {
-        //         return false;
-        //     }
-        //     cmd.* = self.command_list.items[index];
-        // }
-        //
-        // // if (cmd.* == null) {
-        // //     cmd.* = self.command_list.getBegin();
-        // // } else {
-        // //     const tmp = cmd.*.?;
-        // //     cmd.* = tmp.base.next;
-        // // }
-        //
-        // const end_ptr = self.command_list.getEnd();
-        // while (cmd.* != end_ptr) {
-        //     if (cmd.*.?.base.type != command_mod.Type.jump) {
-        //         return 1;
-        //     }
-        //     cmd.* = cmd.*.?.jump.dst;
-        // }
-        // return 0;
     }
 
+    // =========================================================================
+    // 4.4 Frame Lifecycle
+    // =========================================================================
+
     /// Bắt đầu một frame giao diện mới, chuẩn bị danh sách lệnh và cập nhật input.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Kiểm tra hợp lệ 2 callback đo kích thước font (`text_width`, `text_height`).
-    /// - Đặt lại chỉ số danh sách lệnh (`command_list.idx = 0`) và danh sách cửa sổ gốc (`root_list.idx = 0`).
-    /// - Chuyển giao cửa sổ hover dự kiến (`next_hover_root`) sang `hover_root` hiện tại.
-    /// - Tính toán vector vận tốc di chuột `mouse_delta = mouse_pos - last_mouse_pos`.
-    /// - Tăng chỉ số frame hiện tại (`frame += 1`).
     pub fn begin(self: *MicroUI) void {
-        std.debug.assert(self.mu_context.*.text_width != null and self.mu_context.*.text_height != null);
+        std.debug.assert(self.text_width != null and self.text_height != null);
 
-        // Update command
         self.clearCommandList();
-
         self.root_list.clear();
         self.scroll_target = null;
         self.hover_root = self.next_hover_root;
@@ -343,32 +368,20 @@ pub const MicroUI = struct {
         return a.*.zindex < b.*.zindex;
     }
 
-    /// Kết thúc frame giao diện hiện tại và liên kết chuỗi lệnh render của các root container.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Kiểm tra tính toàn vẹn của tất cả các ngăn xếp nội bộ (container, clip rect, id, layout đều đã pop hết).
-    /// - Cập nhật cuộn cho container mục tiêu (`scroll_target`) nếu có tương tác lăn chuột.
-    /// - Cập nhật trạng thái focus và reset nếu trong frame không có widget nào gia hạn focus.
-    /// - Đưa root container đang được click lên trên cùng (`bringToFront`) nếu z-index nhỏ hơn cửa sổ trên cùng.
-    /// - Xóa trắng các cờ sự kiện phím, chuột và bộ đệm ký tự văn bản frame này.
-    /// - Sắp xếp danh sách `root_list` theo thứ tự z-index tăng dần.
-    /// - Liên kết các root container bằng các lệnh JUMP:
-    ///   + Thiết lập lệnh JUMP đầu tiên sang head của root container đầu tiên.
-    ///   + Thiết lập lệnh JUMP từ tail của root container trước sang head của container sau.
-    ///   + Thiết lập lệnh JUMP từ tail của container cuối cùng trỏ đến cuối danh sách command list.
+    /// Kết thúc frame giao diện hiện tại và liên kết chuỗi lệnh render của các root container theo Z-Index.
     pub fn end(self: *MicroUI) void {
         std.debug.assert(self.id_stack.idx == 0);
         std.debug.assert(self.clip_stack.idx == 0);
         std.debug.assert(self.layout_stack.idx == 0);
         std.debug.assert(self.container_stack.idx == 0);
 
-        if (self.mu_context.*.scroll_target != null) {
-            self.mu_context.*.scroll_target.*.scroll.x += self.scroll_delta.x;
-            self.mu_context.*.scroll_target.*.scroll.y += self.scroll_delta.y;
+        if (self.scroll_target) |st| {
+            st.scroll.x += self.scroll_delta.x;
+            st.scroll.y += self.scroll_delta.y;
         }
 
         if (!self.updated_focus) {
-            self.mu_context.*.focus = 0;
+            self.focus = 0;
         }
         self.updated_focus = false;
 
@@ -381,141 +394,66 @@ pub const MicroUI = struct {
         }
 
         self.key_pressed = 0;
-        self.mu_context.*.input_text[0] = 0;
+        self.input_text[0] = 0;
         self.mouse_pressed = 0;
         self.scroll_delta = .{ .x = 0, .y = 0 };
         self.last_mouse_pos = self.mouse_pos;
 
         const root_items = self.root_list.getSlice();
-        // const tmp = root_items[1];
-        // root_items[1] = root_items[2];
-        // root_items[2] = tmp;
-
-        // std.mem.sort(*Container, root_items, {}, compareContainersByZIndex);
-
-        const cnt_style = root_items[0];
-        const cnt_log = root_items[1];
-        const cnt_view = root_items[2];
-
-        self.command_list.begin.?.jump.dst = cnt_log.*.head.?.base.next;
-        cnt_log.*.tail.?.jump.dst = cnt_view.*.head.?.base.next;
-        cnt_view.*.tail.?.jump.dst = cnt_style.*.head.?.base.next;
-        cnt_style.*.tail.?.jump.dst = self.command_list.getEnd();
-
-        // self.command_list.begin.?.jump.dst = cnt_style.*.head.?.base.next;
-        // cnt_style.*.tail.?.jump.dst = self.command_list.getEnd();
-        //
-        // self.command_list.begin.?.jump.dst = cnt_log.*.head.?.base.next;
-        // cnt_log.*.tail.?.jump.dst = self.command_list.getEnd();
-        //
-        // self.command_list.begin.?.jump.dst = cnt_view.*.head.?.base.next;
-        // cnt_view.*.tail.?.jump.dst = self.command_list.getEnd();
-
-        // const cnt2 = root_items[1];
-        // cnt1.*.tail.?.jump.dst = cnt2.*.head.?.base.next;
-        //
-        // const cnt3 = root_items[2];
-        // cnt2.*.tail.?.jump.dst = cnt3.*.head.?.base.next;
-        //
-        // cnt3.*.tail.?.jump.dst = self.command_list.getEnd();
-
-        // const n = root_items.len;
-
-        std.debug.print("************\n", .{});
-        // for (root_items, 0..) |cnt, i| {
-
-        // if (i == 0) {
-        //     std.debug.print("cnt {*}\n", .{cnt});
-        //     std.debug.print("cnt.head {*}\n", .{cnt.*.head.?.base.next});
-        //     const cmd = self.getBegin();
-        //     cmd.*.jump.dst = cnt.*.head.?.base.next;
-        //     std.debug.print("Begin {*}\n", .{self.command_list.begin.?.jump.dst});
-        //     // cmd.*.jump.dst = @ptrCast(
-        //     //     @as([*]u8, @ptrCast(cnt.*.head)) + @sizeOf(c_microui.mu_JumpCommand),
-        //     // );
-        // }
-        // else {
-        //     const prev = root_items[i - 1];
-        //     // prev.*.tail.*.jump.dst = @ptrCast(@as([*]u8, @ptrCast(cnt.*.head)) + @sizeOf(c_microui.mu_JumpCommand));
-        //     prev.*.tail.?.jump.dst = cnt.*.head.?.base.next;
-        // }
-        // if (i == n - 1) {
-        //     // cnt.*.tail.*.jump.dst = self.getEnd();
-        //     cnt.*.tail.?.jump.dst = self.command_list.getEnd();
-        // }
-        // }
+        if (root_items.len > 0) {
+            std.mem.sort(*Container, root_items, {}, compareContainersByZIndex);
+            self.command_list.begin.?.jump.dst = root_items[0].head.?.base.next;
+            for (root_items[1..], 0..) |cnt, i| {
+                root_items[i].tail.?.jump.dst = cnt.head.?.base.next;
+            }
+            root_items[root_items.len - 1].tail.?.jump.dst = null;
+        }
     }
 
     // =========================================================================
-    // 2. INPUT HANDLING
+    // 4.5 Event & Input Handling
     // =========================================================================
 
-    /// Cập nhật tọa độ con trỏ chuột tuyệt đối.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Lưu trực tiếp vector tọa độ `(x, y)` vào `ctx.mouse_pos`.
-    pub fn inputMousemove(self: *MicroUI, x: c_int, y: c_int) void {
+    /// Cập nhật toạ độ con trỏ chuột.
+    pub fn inputMousemove(self: *MicroUI, x: i32, y: i32) void {
         self.mouse_pos = math.vec2(x, y);
     }
 
-    /// Xử lý sự kiện nhấn nút chuột (Mouse Down).
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Cập nhật vị trí chuột hiện tại thông qua `inputMousemove`.
-    /// - Bật bit trạng thái đang giữ nút chuột (`mouse_down |= btn`).
-    /// - Bật bit trạng thái vừa nhấn trong frame này (`mouse_pressed |= btn`).
-    pub fn inputMousedown(self: *MicroUI, x: c_int, y: c_int, btn: c_int) void {
+    /// Ghi nhận sự kiện nhấn nút chuột.
+    pub fn inputMousedown(self: *MicroUI, x: i32, y: i32, btn: i32) void {
         self.inputMousemove(x, y);
         self.mouse_down |= btn;
         self.mouse_pressed |= btn;
     }
 
-    /// Xử lý sự kiện thả nút chuột (Mouse Up).
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Cập nhật vị trí chuột hiện tại.
-    /// - Tắt bit trạng thái đang giữ nút chuột (`mouse_down &= ~btn`).
-    pub fn inputMouseup(self: *MicroUI, x: c_int, y: c_int, btn: c_int) void {
+    /// Ghi nhận sự kiện nhả nút chuột.
+    pub fn inputMouseup(self: *MicroUI, x: i32, y: i32, btn: i32) void {
         self.inputMousemove(x, y);
         self.mouse_down &= ~btn;
     }
 
-    /// Xử lý sự kiện cuộn bánh xe chuột (Mouse Scroll Wheel).
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Cộng dồn độ lệch cuộn `(x, y)` vào `scroll_delta` để xử lý cuộn nội dung ở frame hiện tại.
-    pub fn inputScroll(self: *MicroUI, x: c_int, y: c_int) void {
+    /// Ghi nhận sự kiện cuộn con lăn chuột.
+    pub fn inputScroll(self: *MicroUI, x: i32, y: i32) void {
         self.scroll_delta.x += x;
         self.scroll_delta.y += y;
     }
 
-    /// Xử lý sự kiện nhấn phím từ bàn phím (Key Down).
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Bật bit trạng thái phím vừa nhấn (`key_pressed |= key`) cho các thao tác tức thì (Enter, Backspace...).
-    /// - Bật bit trạng thái phím đang giữ (`key_down |= key`) cho các phím bổ trợ (Shift, Ctrl, Alt...).
-    pub fn inputKeydown(self: *MicroUI, key: c_int) void {
+    /// Ghi nhận sự kiện nhấn phím bàn phím.
+    pub fn inputKeydown(self: *MicroUI, key: i32) void {
         self.key_pressed |= key;
         self.key_down |= key;
     }
 
-    /// Xử lý sự kiện nhả phím từ bàn phím (Key Up).
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Tắt bit trạng thái đang giữ phím (`key_down &= ~key`).
-    pub fn inputKeyup(self: *MicroUI, key: c_int) void {
+    /// Ghi nhận sự kiện nhả phím bàn phím.
+    pub fn inputKeyup(self: *MicroUI, key: i32) void {
         self.key_down &= ~key;
     }
 
-    /// Tiếp nhận chuỗi ký tự UTF-8 từ sự kiện nhập văn bản của hệ thống cửa sổ (Text Input).
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Đo chiều dài các ký tự hiện có trong bộ đệm `input_text`.
-    /// - Nối các byte ký tự mới từ chuỗi null-terminated vào cuối bộ đệm nếu còn dung lượng trống.
-    /// - Luôn đảm bảo ký tự kết thúc chuỗi null-terminator `0` ở cuối mảng.
+    /// Ghi nhận sự kiện nhập chuỗi ký tự UTF-8 (Text Input).
     pub fn inputText(self: *MicroUI, text: [*c]const u8) void {
+        if (text == null) return;
         const span = std.mem.span(text);
-        const input_buf = &self.mu_context.*.input_text;
+        const input_buf = &self.input_text;
         const current_len = std.mem.sliceTo(input_buf, 0).len;
         const remaining = input_buf.len - 1 - current_len;
         const copy_len = @min(span.len, remaining);
@@ -526,53 +464,28 @@ pub const MicroUI = struct {
     }
 
     // =========================================================================
-    // 3. COMMAND BUFFER & CLIPPING
+    // 4.6 Drawing Primitives & Clipping
     // =========================================================================
 
-    /// Kiểm tra trạng thái cắt của một hình chữ nhật đối với vùng clip rect hiện tại.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Lấy clip rect ở đỉnh ngăn xếp qua `getClipRect()`.
-    /// - Trả về `MU_CLIP_ALL` (hoàn toàn ngoài biên) nếu `r` nằm hoàn toàn tách rời ngoài `clip_rect`.
-    /// - Trả về `0` (hoàn toàn trong biên) nếu `r` nằm trọn vẹn bên trong `clip_rect`.
-    /// - Trả về `MU_CLIP_PART` (cắt một phần) nếu `r` chỉ giao nhau một phần với `clip_rect`.
-    pub fn checkClip(self: *MicroUI, r: math.Rect) c_int {
+    /// Kiểm tra trạng thái cắt clip của hình chữ nhật `r` so với vùng clip hiện tại.
+    pub fn checkClip(self: *MicroUI, r: math.Rect) i32 {
         const cr = self.clip_stack.getValue();
         if (r.x > cr.x + cr.w or r.x + r.w < cr.x or r.y > cr.y + cr.h or r.y + r.h < cr.y) {
-            return c_microui.MU_CLIP_ALL;
+            return Clip.ALL;
         }
         if (r.x >= cr.x and r.x + r.w <= cr.x + cr.w and r.y >= cr.y and r.y + r.h <= cr.y + cr.h) {
             return 0;
         }
-        return c_microui.MU_CLIP_PART;
+        return Clip.PART;
     }
 
-    /// Đẩy một vùng cắt mới vào ngăn xếp và tính giao với vùng cắt hiện tại.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Lấy vùng cắt trước đó `last = getClipRect()`.
-    /// - Tính giao `intersectRects(rect, last)` để thu hẹp vùng nhìn lồng nhau.
-    /// - Đẩy kết quả vào `clip_stack` và tăng `clip_stack.idx`.
+    /// Đẩy một vùng cắt mới vào ngăn xếp clip (giao thoa với vùng clip cũ).
     pub fn pushClipRect(self: *MicroUI, r: math.Rect) void {
         const last = self.clip_stack.getValue();
         self.clip_stack.push(r.intersect(last));
     }
 
-    /// Đưa lệnh thiết lập vùng cắt (Clip Command) vào bộ đệm lệnh vẽ.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Cấp phát một command kiểu `MU_COMMAND_CLIP` với kích thước struct `mu_ClipCommand`.
-    /// - Gán vùng giới hạn hiển thị `clip.rect = rect`.
-
-    // =========================================================================
-    // 4. LOW-LEVEL DRAWING PRIMITIVES
-    // =========================================================================
-
-    /// Đẩy lệnh vẽ hình chữ nhật có màu vào command buffer sau khi đã cắt biên.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Tính giao giữa hình chữ nhật `r` và vùng cắt đỉnh `clip_stack`.
-    /// - Nếu kích thước hợp lệ (`w > 0` và `h > 0`), đẩy command `MU_COMMAND_RECT`.
+    /// Vẽ một hình chữ nhật với màu tương ứng (có kiểm tra clip).
     pub fn drawRect(self: *MicroUI, r: math.Rect, col: Color) void {
         const draw_rect = r.intersect(self.clip_stack.getValue());
         if (draw_rect.w > 0 and draw_rect.h > 0) {
@@ -580,13 +493,8 @@ pub const MicroUI = struct {
         }
     }
 
-    /// Vẽ khung nền hình chữ nhật cho container hoặc widget theo chỉ số màu, kèm viền border nếu có.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Lấy màu tương ứng từ bảng màu Style theo `color_id` và vẽ nền bằng `drawRect`.
-    /// - Bỏ qua viền với các màu thanh cuộn và tiêu đề (`SCROLLBASE`, `SCROLLTHUMB`, `TITLEBG`).
-    /// - Nếu màu viền `border` có kênh alpha > 0: mở rộng vùng `r.expand(1)` và vẽ 4 đường cạnh bao quanh 1px.
-    fn drawFrame(self: *MicroUI, r: math.Rect, color_id: c_int) void {
+    /// Vẽ khung nền và viền của control theo color_id.
+    fn drawFrame(self: *MicroUI, r: math.Rect, color_id: i32) void {
         const style_ptr = self.getStyle();
         const colors = style_ptr.colors;
         self.drawRect(r, colors[@intCast(color_id)]);
@@ -605,47 +513,31 @@ pub const MicroUI = struct {
         }
     }
 
-    /// Đẩy lệnh vẽ biểu tượng (Icon) vào command buffer.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Tính giao giữa `rect` của icon và `getClipRect()`.
-    /// - Nếu nằm trong vùng hiển thị có kích thước dương:
-    ///   + Cấp phát command `MU_COMMAND_ICON`.
-    ///   + Lưu ID icon, vùng rect đã cắt và màu sắc hiển thị.
-    pub fn drawIcon(self: *MicroUI, id: c_int, r: math.Rect, col: Color) void {
+    /// Vẽ biểu tượng (Icon) có kiểm tra clip.
+    pub fn drawIcon(self: *MicroUI, id: i32, r: math.Rect, col: Color) void {
         const clipped = r.intersect(self.clip_stack.getValue());
         if (clipped.w > 0 and clipped.h > 0) {
-            pushIcon(self, id, clipped, col);
+            self.pushIcon(id, clipped, col);
         }
     }
 
-    /// Đẩy lệnh vẽ một chuỗi ký tự đơn dòng tại vị trí xác định kèm xử lý clipping.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Kiểm tra rỗng: nếu `text.len == 0`, kết thúc ngay lập tức.
-    /// - Đo chiều rộng chuỗi bằng callback `text_width` và chiều cao qua `text_height`.
-    /// - Xác định bounding box của văn bản và kiểm tra clipping qua `checkClip()`.
-    ///   + Nếu `MU_CLIP_ALL`: nằm ngoài màn hình, bỏ qua không vẽ.
-    ///   + Nếu `MU_CLIP_PART`: đẩy lệnh `setClip()` tạm thời để GPU cắt đúng vùng nhìn.
-    /// - Cấp phát command `MU_COMMAND_TEXT` với kích thước `sizeof(mu_TextCommand) + text.len`.
-    /// - Sao chép byte văn bản vào `cmd.text.str` và gắn null-terminator `0` ở cuối.
-    /// - Khôi phục vùng cắt `setClipUnclipped()` nếu trước đó bị cắt một phần.
+    /// Vẽ văn bản với font, vị trí và màu chỉ định (tự động cắt clip một phần hoặc toàn bộ).
     pub fn drawTextEx(
         self: *MicroUI,
-        font: c_microui.mu_Font,
+        font: Font,
         text: []const u8,
         pos: math.Vec2,
         col: Color,
     ) void {
         if (text.len == 0) return;
-        const text_width = self.mu_context.*.text_width.?(font, &text[0], @intCast(text.len));
-        const text_height = self.mu_context.*.text_height.?(font);
-        const rect = math.rect(pos.x, pos.y, text_width, text_height);
-        const clipped = self.checkClip(rect);
-        if (clipped == c_microui.MU_CLIP_ALL) {
+        const text_width = self.text_width.?(font, &text[0], @intCast(text.len));
+        const text_height = self.text_height.?(font);
+        const rect_val = math.rect(pos.x, pos.y, text_width, text_height);
+        const clipped = self.checkClip(rect_val);
+        if (clipped == Clip.ALL) {
             return;
         }
-        if (clipped == c_microui.MU_CLIP_PART) {
+        if (clipped == Clip.PART) {
             self.pushClip(self.clip_stack.getValue());
         }
         self.pushText(text, pos, col, font);
@@ -654,53 +546,37 @@ pub const MicroUI = struct {
         }
     }
 
-    /// Vẽ khung nền cho widget điều khiển (Button, Checkbox, Slider, Textbox...).
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Bỏ qua nếu có cờ `MU_OPT_NOFRAME`.
-    /// - Điều chỉnh biến thể màu sắc theo tương tác người dùng:
-    ///   + Nếu widget đang có Focus: tăng mã màu +2 (màu active/focus).
-    ///   + Nếu widget đang Hover: tăng mã màu +1 (màu hover).
-    /// - Thực thi callback `draw_frame` của context để render khung chữ nhật.
-    pub fn drawControlFrame(self: *MicroUI, id: c_uint, rect: math.Rect, color_id: c_int, opt: c_int) void {
-        if ((opt & c_microui.MU_OPT_NOFRAME) != 0) {
+    /// Vẽ khung nền của widget điều khiển, tự động đổi màu khi hover hoặc focus.
+    pub fn drawControlFrame(self: *MicroUI, id: Id, rect_val: math.Rect, color_id: i32, opt: i32) void {
+        if ((opt & Opt.NOFRAME) != 0) {
             return;
         }
-        var color = color_id;
-        if (self.mu_context.*.focus == id) {
-            color += 2;
-        } else if (self.mu_context.*.hover == id) {
-            color += 1;
+        var color_val = color_id;
+        if (self.focus == id) {
+            color_val += 2;
+        } else if (self.hover == id) {
+            color_val += 1;
         }
-        self.drawFrame(rect, color);
+        self.drawFrame(rect_val, color_val);
     }
 
-    /// Vẽ nhãn văn bản căn lề bên trong khung hình chữ nhật của widget.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Đo chiều rộng chuỗi `text` thông qua hàm đo kích thước font.
-    /// - Đẩy `rect` của widget vào clip stack để chữ không bị tràn ra ngoài control.
-    /// - Căn giữa theo trục Y (`y + (h - text_height) / 2`).
-    /// - Căn lề trục X dựa trên tùy chọn `opt`:
-    ///   + `MU_OPT_ALIGNCENTER`: đặt tại `x + (w - tw) / 2`.
-    ///   + `MU_OPT_ALIGNRIGHT`: đặt tại `x + w - tw - padding`.
-    ///   + Mặc định: căn trái tại `x + padding`.
-    /// - Gọi `drawTextEx()` để đẩy lệnh render và pop clip rect.
-    pub fn drawControlText(self: *MicroUI, text: [*c]const u8, rect: math.Rect, color_id: c_int, opt: c_int) void {
+    /// Vẽ văn bản bên trong một widget điều khiển theo căn lề (trái, giữa, phải).
+    pub fn drawControlText(self: *MicroUI, text: [*c]const u8, rect_val: math.Rect, color_id: i32, opt: i32) void {
+        if (text == null) return;
         const style_ptr = self.getStyle();
         const font = style_ptr.font;
-        const tw = self.mu_context.*.text_width.?(font, text, -1);
-        self.pushClipRect(rect);
+        const tw = self.text_width.?(font, text, -1);
+        self.pushClipRect(rect_val);
         defer _ = self.clip_stack.pop();
 
         var pos: math.Vec2 = undefined;
-        pos.y = rect.y + @divTrunc(rect.h - self.mu_context.*.text_height.?(font), 2);
-        if ((opt & c_microui.MU_OPT_ALIGNCENTER) != 0) {
-            pos.x = rect.x + @divTrunc(rect.w - tw, 2);
-        } else if ((opt & c_microui.MU_OPT_ALIGNRIGHT) != 0) {
-            pos.x = rect.x + rect.w - tw - style_ptr.padding;
+        pos.y = rect_val.y + @divTrunc(rect_val.h - self.text_height.?(font), 2);
+        if ((opt & Opt.ALIGNCENTER) != 0) {
+            pos.x = rect_val.x + @divTrunc(rect_val.w - tw, 2);
+        } else if ((opt & Opt.ALIGNRIGHT) != 0) {
+            pos.x = rect_val.x + rect_val.w - tw - style_ptr.padding;
         } else {
-            pos.x = rect.x + style_ptr.padding;
+            pos.x = rect_val.x + style_ptr.padding;
         }
         const col = style_ptr.colors[@intCast(color_id)];
         const span = std.mem.span(text);
@@ -708,52 +584,32 @@ pub const MicroUI = struct {
     }
 
     // =========================================================================
-    // 5. STATE, ID & INTERACTION MANAGEMENT
+    // 4.7 Control ID & Focus System
     // =========================================================================
 
-    /// Tạo mã hash định danh duy nhất (mu_Id) cho widget bằng thuật toán FNV-1a.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Khởi tạo giá trị băm từ đỉnh `id_stack` (nếu stack không rỗng) hoặc giá trị FNV offset basis `2166136261`.
-    /// - Với mỗi byte trong dữ liệu đầu vào:
-    ///   + `res = (res ^ byte) * 16777619` (sử dụng phép nhân tràn an toàn `*%`).
-    /// - Lưu kết quả vào `ctx.last_id` và trả về mã hash ID.
-    pub fn getId(self: *MicroUI, data: ?*const anyopaque, size: c_int) c_uint {
+    /// Băm dữ liệu định danh kết hợp với ID cha để tạo mã Id (FNV-1a 32-bit).
+    pub fn getId(self: *MicroUI, data: ?*const anyopaque, size: usize) Id {
         const idx = self.id_stack.idx;
         var res: u32 = if (idx > 0) self.id_stack.getValue() else 2166136261;
 
         if (data) |p| {
             const bytes: [*]const u8 = @ptrCast(p);
             var i: usize = 0;
-            const len: usize = @intCast(size);
-            while (i < len) : (i += 1) {
+            while (i < size) : (i += 1) {
                 res = (res ^ bytes[i]) *% 16777619;
             }
         }
-        self.mu_context.*.last_id = res;
+        self.last_id = res;
         return res;
     }
 
-    /// Đặt trạng thái Focus (tiêu điểm bàn phím/chuột) cho widget có ID chỉ định.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Lưu `id` vào `ctx.focus`.
-    /// - Đánh dấu cờ `updated_focus = 1` để giữ focus không bị reset ở cuối frame.
-    pub fn setFocus(self: *MicroUI, id: c_uint) void {
-        self.mu_context.*.focus = id;
+    /// Đặt tiêu điểm nhập liệu (focus) cho widget có mã ID tương ứng.
+    pub fn setFocus(self: *MicroUI, id: Id) void {
+        self.focus = id;
         self.updated_focus = true;
     }
 
-    /// Kiểm tra con trỏ chuột có đang di chuột lên trên vùng widget hay không.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Chuột phải nằm bên trong vùng chữ nhật của widget (`r.overlapsVec2(mouse_pos)`).
-    /// - Chuột phải nằm bên trong vùng cắt clip rect đỉnh ngăn xếp (`clip_stack.getValue()`).
-    /// - Duyệt ngược từ đỉnh `container_stack` xuống dưới để kiểm tra container có thuộc cây `hover_root`
-    ///   (không bị cửa sổ khác đè lên):
-    ///   + Nếu gặp container trùng với `hover_root`: trả về `true`.
-    ///   + Dừng lại khi chạm tới gốc của một cửa sổ (`cnt.head != null`).
-    /// - Trả về `false` nếu chuột nằm ngoài vùng hoặc không thuộc cây hover root.
+    /// Kiểm tra con trỏ chuột có đang lơ lửng (hover) trên hình chữ nhật `r` hay không.
     pub fn mouseOver(self: *MicroUI, r: math.Rect) bool {
         if (!r.overlapsVec2(self.mouse_pos) or
             !self.clip_stack.getValue().overlapsVec2(self.mouse_pos))
@@ -763,7 +619,7 @@ pub const MicroUI = struct {
         var i = self.container_stack.idx;
         while (i > 0) {
             i -= 1;
-            const cnt = self.container_stack.items[@intCast(i)];
+            const cnt = self.container_stack.items[i];
             if (self.hover_root) |hr| {
                 if (cnt == hr) {
                     return true;
@@ -776,162 +632,106 @@ pub const MicroUI = struct {
         return false;
     }
 
-    /// Cập nhật máy trạng thái tương tác chuột (Hover, Focus, Press) cho một widget.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Tính trạng thái `mouseover = mouseOver(rect)`.
-    /// - Nếu widget đang có focus, gia hạn cờ `updated_focus = 1`.
-    /// - Bỏ qua xử lý nếu có cờ `MU_OPT_NOINTERACT`.
-    /// - Thiết lập `hover = id` khi chuột nằm trên widget và không có nút chuột nào đang giữ.
-    /// - Xử lý chuyển đổi Focus:
-    ///   + Nhấn chuột vào widget khi đang hover -> cấp Focus cho widget.
-    ///   + Nhấn chuột ra ngoài widget -> hủy bỏ Focus (`setFocus(0)`).
-    ///   + Nhả chuột khi không có tùy chọn `MU_OPT_HOLDFOCUS` -> hủy bỏ Focus.
-    pub fn updateControl(self: *MicroUI, id: c_uint, rect: math.Rect, opt: c_int) void {
-        const mouseover = self.mouseOver(rect);
+    /// Cập nhật trạng thái hover và focus của widget theo tương tác chuột.
+    pub fn updateControl(self: *MicroUI, id: Id, rect_val: math.Rect, opt: i32) void {
+        const mouseover = self.mouseOver(rect_val);
 
-        if (self.mu_context.*.focus == id) {
+        if (self.focus == id) {
             self.updated_focus = true;
         }
-        if ((opt & c_microui.MU_OPT_NOINTERACT) != 0) {
+        if ((opt & Opt.NOINTERACT) != 0) {
             return;
         }
         if (mouseover and self.mouse_down == 0) {
-            self.mu_context.*.hover = id;
+            self.hover = id;
         }
 
-        if (self.mu_context.*.focus == id) {
+        if (self.focus == id) {
             if (self.mouse_pressed != 0 and !mouseover) {
                 self.setFocus(0);
             }
-            if (self.mouse_down == 0 and (~opt & c_microui.MU_OPT_HOLDFOCUS) != 0) {
+            if (self.mouse_down == 0 and (~opt & Opt.HOLDFOCUS) != 0) {
                 self.setFocus(0);
             }
         }
 
-        if (self.mu_context.*.hover == id) {
+        if (self.hover == id) {
             if (self.mouse_pressed != 0) {
                 self.setFocus(id);
             } else if (!mouseover) {
-                self.mu_context.*.hover = 0;
+                self.hover = 0;
             }
         }
     }
 
     // =========================================================================
-    // 6. LAYOUT SYSTEM
+    // 4.8 Layout Engine
     // =========================================================================
 
-    /// Lấy con trỏ tới thông tin bố cục (`mu_Layout`) hiện tại ở đỉnh ngăn xếp.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Trả về địa chỉ của phần tử tại chỉ số `layout_stack.idx - 1`.
-    pub fn getLayout(self: *MicroUI) *c_microui.mu_Layout {
+    /// Lấy con trỏ đến trạng thái layout hiện tại ở đỉnh stack.
+    pub fn getLayout(self: *MicroUI) *Layout {
         return self.layout_stack.getPValue();
     }
 
-    /// Khởi tạo và đẩy một layout mới vào stack với vùng hiển thị và thanh cuộn.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Trừ tọa độ body theo giá trị scroll: `x - scroll.x`, `y - scroll.y`.
-    /// - Khởi tạo `layout.max` với giá trị âm cực tiểu để tích lũy kích thước nội dung con.
-    /// - Đẩy vào `layout_stack` và khởi tạo hàng mặc định bằng `layoutRow(&[_]i32{0}, 0)`.
+    /// Đẩy một layout mới vào stack với vùng thân (body) và vị trí cuộn (scroll).
     pub fn pushLayout(self: *MicroUI, body: math.Rect, scroll: math.Vec2) void {
-        var layout: c_microui.mu_Layout = undefined;
-        @memset(@as([*]u8, @ptrCast(&layout))[0..@sizeOf(c_microui.mu_Layout)], 0);
-        layout.body = math.rect(body.x - scroll.x, body.y - scroll.y, body.w, body.h).toMu();
-        layout.max = math.vec2(-0x1000000, -0x1000000).toMu();
-
+        var layout: Layout = .{};
+        layout.body = math.rect(body.x - scroll.x, body.y - scroll.y, body.w, body.h);
+        layout.max = math.vec2(-0x1000000, -0x1000000);
         self.layout_stack.push(layout);
         self.layoutRow(&[_]i32{0}, 0);
     }
 
-    /// Thiết lập cấu hình hàng bố cục nâng cao với số lượng cột, mảng chiều rộng và chiều cao.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Sao chép các giá trị chiều rộng từ `widths` vào `layout.widths`.
-    /// - Thiết lập vị trí con trỏ layout hiện tại tại `position = (indent, next_row)`.
-    /// - Đặt lại chỉ số widget trong hàng `item_index = 0`.
-    pub fn layoutRowEx(self: *MicroUI, items: c_int, widths: ?[]const i32, height: i32) void {
+    /// Thiết lập cấu hình hàng layout với mảng độ rộng `widths` và chiều cao `height`.
+    pub fn layoutRowEx(self: *MicroUI, items: i32, widths: ?[]const i32, height: i32) void {
         const layout = self.getLayout();
         if (widths) |w| {
-            std.debug.assert(w.len <= c_microui.MU_MAX_WIDTHS);
-            for (w, 0..) |width_val, i| {
-                layout.*.widths[i] = width_val;
+            std.debug.assert(items <= MAX_WIDTHS);
+            for (w, 0..) |width, i| {
+                layout.*.widths[i] = width;
             }
-            layout.*.items = @intCast(w.len);
-        } else {
-            layout.*.items = items;
         }
-        layout.*.position = math.vec2(layout.*.indent, layout.*.next_row).toMu();
-        layout.*.size.y = height;
+        layout.*.items = items;
         layout.*.item_index = 0;
+        layout.*.position = math.vec2(layout.*.indent, layout.*.next_row);
+        layout.*.size.y = height;
+        layout.*.next_type = 0;
     }
 
-    /// Cấu hình hàng bố cục đơn giản thông qua một mảng slice chiều rộng các cột.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Chuyển tiếp tới `layoutRowEx` với số lượng phần tử tự động suy ra từ `widths.len`.
+    /// Thiết lập cấu hình hàng layout ngắn gọn.
     pub fn layoutRow(self: *MicroUI, widths: []const i32, height: i32) void {
         self.layoutRowEx(@intCast(widths.len), widths, height);
     }
 
-    /// Ghi đè chiều rộng cố định cho các widget kế tiếp trong hàng.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Thiết lập giá trị `layout.size.x = width`. Khi layout tự động xác định kích thước widget,
-    ///   giá trị này sẽ được sử dụng nếu hàng không cấu hình mảng widths chi tiết.
+    /// Đặt độ rộng cho widget kế tiếp trong hàng.
     pub fn layoutWidth(self: *MicroUI, width: i32) void {
         self.getLayout().*.size.x = width;
     }
 
-    /// Ghi đè chiều cao cho hàng hiện tại của layout.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Cập nhật trực tiếp `layout.size.y = height`. Tất cả widget tiếp theo trong hàng sẽ thừa hưởng chiều cao này.
+    /// Đặt chiều cao cho hàng hiện tại.
     pub fn layoutHeight(self: *MicroUI, height: i32) void {
         self.getLayout().*.size.y = height;
     }
 
-    /// Đặt trước vị trí/kích thước hình chữ nhật cho widget kế tiếp (Manual Placement).
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Lưu `r` vào `layout.next`.
-    /// - Gán `next_type = 1` nếu tọa độ tương đối theo container, hoặc `2` nếu là tọa độ tuyệt đối trên màn hình.
+    /// Đặt vị trí và kích thước thủ công cho widget kế tiếp.
     pub fn layoutSetNext(self: *MicroUI, r: math.Rect, relative: bool) void {
         const layout = self.getLayout();
         layout.*.next = r;
         layout.*.next_type = if (relative) 1 else 2;
     }
 
-    /// Tính toán và lấy hình chữ nhật vị trí cho widget kế tiếp, sau đó tịnh tiến layout.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Nếu có `next_type != 0`: lấy rect đã đặt trước, reset cờ và trả về ngay nếu là tọa độ tuyệt đối.
-    /// - Tự động xuống hàng mới nếu số widget đã vẽ trong hàng đạt ngưỡng `items`.
-    /// - Tính toán chiều rộng `w` và chiều cao `h`:
-    ///   + Giá trị < 0: tính kích thước tương đối dựa theo chiều rộng còn lại của container (`body.w - res.x + 1`).
-    ///   + Giá trị == 0: lấy kích thước mặc định từ `style.size` cộng với khoảng đệm `padding * 2`.
-    /// - Tịnh tiến `position.x` thêm `(w + spacing)`.
-    /// - Cập nhật `next_row = max(next_row, y + h + spacing)`.
-    /// - Tịnh tiến tọa độ tuyệt đối cộng thêm gốc container `(body.x, body.y)`.
-    /// - Cập nhật biên tối đa `layout.max` phục vụ tính toán scroll bar.
+    /// Tính toán toạ độ và kích thước cho widget kế tiếp theo cơ chế phân bổ layout.
     pub fn layoutNext(self: *MicroUI) math.Rect {
         const layout = self.getLayout();
         const style_ptr = self.getStyle();
-        var res: math.Rect = undefined;
+        var res: math.Rect = .{};
 
         if (layout.*.next_type != 0) {
             const next_type = layout.*.next_type;
             layout.*.next_type = 0;
-            res = .{
-                .x = layout.*.next.x,
-                .y = layout.*.next.y,
-                .w = layout.*.next.w,
-                .h = layout.*.next.h,
-            };
+            res = layout.*.next;
             if (next_type == 2) {
-                self.mu_context.*.last_rect = res.toMu();
+                self.last_rect = res;
                 return res;
             }
         } else {
@@ -941,9 +741,14 @@ pub const MicroUI = struct {
 
             res.x = layout.*.position.x;
             res.y = layout.*.position.y;
-
-            res.w = if (layout.*.items > 0) layout.*.widths[@intCast(layout.*.item_index)] else layout.*.size.x;
+            res.w = layout.*.items;
             res.h = layout.*.size.y;
+
+            if (layout.*.items > 0) {
+                res.w = layout.*.widths[@intCast(layout.*.item_index)];
+            } else {
+                res.w = layout.*.size.x;
+            }
 
             if (res.w == 0) {
                 res.w = style_ptr.size.x + style_ptr.padding * 2;
@@ -970,27 +775,20 @@ pub const MicroUI = struct {
         layout.*.max.x = @max(layout.*.max.x, res.x + res.w);
         layout.*.max.y = @max(layout.*.max.y, res.y + res.h);
 
-        self.mu_context.*.last_rect = res.toMu();
+        self.last_rect = res;
         return res;
     }
 
-    /// Bắt đầu một cột dọc phụ lồng bên trong hàng hiện tại (Nested Column).
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Gọi `layoutNext()` để lấy ô dành cho cột.
-    /// - Đẩy một sub-layout mới vào stack qua `pushLayout`.
+    /// Bắt đầu một cột con lồng nhau bên trong layout hàng hiện tại.
     pub fn layoutBeginColumn(self: *MicroUI) void {
         self.pushLayout(self.layoutNext(), math.vec2(0, 0));
     }
 
-    /// Kết thúc cột dọc phụ và hòa nhập kích thước trở lại layout cha.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Rút sub-layout con `b` khỏi `layout_stack`.
-    /// - Cập nhật layout cha `a`: mở rộng `position.x`, `next_row`, `max` theo kích thước tối đa của cột `b`.
+    /// Kết thúc cột con, cập nhật lại kích thước cho layout cha.
     pub fn layoutEndColumn(self: *MicroUI) void {
-        const b = self.layout_stack.pop();
-        const a = self.layout_stack.getPValue();
+        const b = self.getLayout().*;
+        _ = self.layout_stack.pop();
+        const a = self.getLayout();
         a.*.position.x = @max(a.*.position.x, b.position.x + b.body.x - a.*.body.x);
         a.*.next_row = @max(a.*.next_row, b.next_row + b.body.y - a.*.body.y);
         a.*.max.x = @max(a.*.max.x, b.max.x);
@@ -998,122 +796,84 @@ pub const MicroUI = struct {
     }
 
     // =========================================================================
-    // 7. POOL & CONTAINER MANAGEMENT
+    // 4.9 Container & State Pool Management
     // =========================================================================
 
-    /// Tìm kiếm chỉ số của một phần tử trong pool theo ID định danh.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Duyệt tuyến tính qua mảng `items`. Nếu tìm thấy `item.id == id`, trả về chỉ số `i`.
-    /// - Trả về `null` nếu không tìm thấy.
-    pub fn poolGet(_: *MicroUI, items: []c_microui.mu_PoolItem, id: c_uint) ?usize {
-        for (items, 0..) |item, i| {
-            if (item.id == id) {
+    /// Tra cứu vị trí phần tử trong pool theo ID.
+    pub fn poolGet(_: *MicroUI, items: []PoolItem, id: Id) ?usize {
+        var i: usize = 0;
+        while (i < items.len) : (i += 1) {
+            if (items[i].id == id) {
                 return i;
             }
         }
         return null;
     }
 
-    /// Cập nhật thời điểm sử dụng gần nhất của phần tử trong pool với frame hiện tại.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Gán `items[idx].last_update = ctx.frame` nhằm phục vụ giải thuật LRU (Least Recently Used).
-    pub fn poolUpdate(self: *MicroUI, items: []c_microui.mu_PoolItem, idx: usize) void {
-        items[idx].last_update = @intCast(self.frame);
+    /// Cập nhật thời điểm sử dụng mới nhất cho phần tử trong pool.
+    pub fn poolUpdate(self: *MicroUI, items: []PoolItem, idx: usize) void {
+        items[idx].last_update = self.frame;
     }
 
-    /// Khởi tạo hoặc tái sử dụng phần tử cũ nhất (LRU) trong pool cho một ID mới.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Duyệt tìm phần tử có `last_update` nhỏ nhất (lâu nhất chưa được truy cập).
-    /// - Gán `id` mới cho slot đó và cập nhật thời gian sử dụng qua `poolUpdate`.
-    /// - Trả về chỉ số slot được cấp phát.
-    pub fn poolInit(self: *MicroUI, items: []c_microui.mu_PoolItem, id: c_uint) usize {
-        var n: ?usize = null;
-        var oldest_frame: i32 = @intCast(self.frame);
-        for (items, 0..) |item, i| {
-            if (item.last_update < oldest_frame) {
-                oldest_frame = item.last_update;
+    /// Khởi tạo hoặc tái sử dụng phần tử ít được dùng nhất (LRU) trong pool.
+    pub fn poolInit(self: *MicroUI, items: []PoolItem, id: Id) usize {
+        var f: i32 = self.frame;
+        var n: usize = 0;
+        var i: usize = 0;
+        while (i < items.len) : (i += 1) {
+            if (items[i].last_update < f) {
+                f = items[i].last_update;
                 n = i;
             }
         }
-        const idx = n orelse 0;
-        items[idx].id = id;
-        self.poolUpdate(items, idx);
-        return idx;
+        items[n].id = id;
+        self.poolUpdate(items, n);
+        return n;
     }
 
-    /// Lấy hoặc cấp phát một container giao diện người dùng theo ID và cờ tùy chọn.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Tìm kiếm ID trong `container_pool` qua `poolGet`:
-    ///   + Nếu tìm thấy: cập nhật thời điểm sử dụng nếu container đang mở hoặc không có cờ `MU_OPT_CLOSED`.
-    ///   + Trả về con trỏ tới container tương ứng.
-    /// - Nếu không tìm thấy và có cờ `MU_OPT_CLOSED`: trả về `null`.
-    /// - Cấp phát slot mới từ pool qua `poolInit`, xóa trắng dữ liệu struct `mu_Container`.
-    /// - Thiết lập trạng thái `open = 1` và đưa lên lớp trên cùng qua `bringToFront`.
-    pub fn getContainer(self: *MicroUI, id: c_uint, opt: c_int) ?*Container {
-        const pool = &self.mu_context.*.container_pool;
-        if (self.poolGet(pool, id)) |idx| {
-            if (self.mu_context.*.containers[idx].open != 0 or ~opt & c_microui.MU_OPT_CLOSED != 0) {
-                self.poolUpdate(pool, idx);
+    /// Lấy hoặc tạo mới một Container theo ID.
+    pub fn getContainer(self: *MicroUI, id: Id, opt: i32) ?*Container {
+        const pool = &self.container_pool;
+        var idx = self.poolGet(pool, id);
+        if (idx) |val| {
+            if (self.containers[val].open != 0 or (opt & Opt.CLOSED) == 0) {
+                self.poolUpdate(pool, val);
             }
-            return &self.containers[idx];
+            return &self.containers[val];
         }
-        if (opt & c_microui.MU_OPT_CLOSED != 0) {
+        if ((opt & Opt.CLOSED) != 0) {
             return null;
         }
-        const idx = self.poolInit(pool, id);
-        // const cnt = &self.mu_context.*.containers[idx];
-        const cnt = &self.containers[idx];
-        @memset(@as([*]u8, @ptrCast(cnt))[0..@sizeOf(Container)], 0);
+        idx = self.poolInit(pool, id);
+        const cnt = &self.containers[idx.?];
+        cnt.* = .{};
         cnt.*.open = 1;
         self.bringToFront(cnt);
         return cnt;
     }
 
-    /// Lấy con trỏ container bằng chuỗi định danh (tính ID băm từ tên rồi tìm container).
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Băm chuỗi tên thành ID qua `getId(name.ptr, name.len)`.
-    /// - Gọi `getContainer(id, 0)` để lấy hoặc khởi tạo container.
+    /// Lấy con trỏ Container theo tên tiêu đề.
     pub fn getContainerByName(self: *MicroUI, name: [:0]const u8) ?*Container {
-        const id = self.getId(name.ptr, @intCast(name.len));
+        const id = self.getId(name.ptr, name.len);
         return self.getContainer(id, 0);
     }
 
-    /// Lấy container hiện tại đang được xây dựng ở đỉnh ngăn xếp `container_stack`.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Kiểm tra điều kiện biên `container_stack.idx > 0`.
-    /// - Trả về phần tử tại chỉ số `container_stack.idx - 1`.
+    /// Lấy container hiện tại đang được xử lý ở đỉnh stack.
     pub fn getCurrentContainer(self: *MicroUI) *Container {
         return self.container_stack.getValue();
     }
 
-    /// Đẩy thân container (body), tính toán thanh cuộn tự động và thiết lập layout bên trong.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Nếu không có cờ `MU_OPT_NOSCROLL`, gọi `scrollbars()` để trừ diện tích hiển thị thanh cuộn.
-    /// - Đẩy layout mới với vùng hiển thị đã trừ khoảng đệm `padding` và độ lệch cuộn `cnt.scroll`.
-    /// - Cập nhật `cnt.body = tmp_body`.
-    pub fn pushContainerBody(self: *MicroUI, cnt: *Container, body: math.Rect, opt: c_int) void {
-        var tmp_body = body;
-        if (~opt & c_microui.MU_OPT_NOSCROLL != 0) {
-            self.scrollbars(cnt, &tmp_body);
+    /// Đẩy body của container vào layout và tính toán thanh cuộn.
+    pub fn pushContainerBody(self: *MicroUI, cnt: *Container, body: math.Rect, opt: i32) void {
+        var b = body;
+        if ((opt & Opt.NOSCROLL) == 0) {
+            self.scrollbars(cnt, &b);
         }
-        const scroll = math.Vec2.fromMu(cnt.scroll);
-        self.pushLayout(tmp_body.expand(-self.getStyle().padding), scroll);
-        cnt.*.body = tmp_body.toMu();
+        self.pushLayout(b.expand(-self.getStyle().padding), cnt.*.scroll);
+        cnt.*.body = b;
     }
 
-    /// Đóng một container thông thường (Panel, Sub-view).
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Tính toán kích thước nội dung `content_size = layout.max - layout.body` phục vụ thanh cuộn.
-    /// - Giảm chỉ số ngăn xếp `container_stack.idx` và `layout_stack.idx`.
-    /// - Pop ID tương ứng khỏi ID stack.
+    /// Đóng và đưa container hiện tại ra khỏi ngăn xếp xử lý.
     pub fn popContainer(self: *MicroUI) void {
         const cnt = self.getCurrentContainer();
         const layout = self.getLayout();
@@ -1124,41 +884,22 @@ pub const MicroUI = struct {
         _ = self.id_stack.pop();
     }
 
-    /// Đưa một container lên trên cùng của trật tự Z-Index hiển thị.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Gán `zindex = last_zindex + 1` cho container.
-    /// - Cập nhật chỉ số `last_zindex += 1`.
+    /// Đưa container lên lớp trên cùng (Z-Index cao nhất).
     pub fn bringToFront(self: *MicroUI, cnt: *Container) void {
         cnt.*.zindex = self.last_zindex + 1;
         self.last_zindex += 1;
     }
 
     // =========================================================================
-    // 8. SCROLLING & SCROLLBAR SYSTEM
+    // 4.10 Scrollbar System
     // =========================================================================
 
-    /// Hướng trục của thanh cuộn.
     pub const ScrollbarAxis = enum {
         vertical,
         horizontal,
     };
 
-    /// Xử lý logic tương tác và vẽ thanh cuộn (Scrollbar) cho một trục chỉ định.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Xác định độ cuộn tối đa `maxscroll` dựa trên kích thước nội dung `cs` và kích thước khung hiển thị `body`.
-    /// - Nếu nội dung vượt quá kích thước khung (`maxscroll > 0` và `body > 0`):
-    ///   + Xác định định danh `id` ("!scrollbary" cho trục dọc, "!scrollbarx" cho trục ngang).
-    ///   + Tính kích thước rãnh trượt `base` ở cạnh phải (dọc) hoặc cạnh dưới (ngang).
-    ///   + Cập nhật tương tác điều khiển qua `updateControl()`.
-    ///   + Nếu widget có focus và đang giữ chuột trái: cập nhật giá trị cuộn theo `mouse_delta`.
-    ///   + Giới hạn độ cuộn trong khoảng `[0, maxscroll]` bằng `std.math.clamp`.
-    ///   + Vẽ rãnh trượt `MU_COLOR_SCROLLBASE`.
-    ///   + Tính toán vị trí và độ dài thanh trượt `thumb` (tỷ lệ với khung hiển thị, tối thiểu `thumb_size`).
-    ///   + Vẽ thanh trượt `MU_COLOR_SCROLLTHUMB`.
-    ///   + Gán container làm `scroll_target` nếu con trỏ chuột nằm trong `body`.
-    /// - Nếu không cần cuộn: đặt độ cuộn của container về 0.
+    /// Xử lý logic tính toán và vẽ thanh cuộn theo một trục (dọc hoặc ngang).
     pub fn scrollbar(
         self: *MicroUI,
         cnt: *Container,
@@ -1178,7 +919,7 @@ pub const MicroUI = struct {
                     base.w = sz;
 
                     self.updateControl(id, base, 0);
-                    if (self.mu_context.*.focus == id and self.mouse_down == c_microui.MU_MOUSE_LEFT) {
+                    if (self.focus == id and self.mouse_down == Mouse.LEFT) {
                         cnt.scroll.y += @divTrunc(self.mouse_delta.y * cs.y, base.h);
                     }
                     cnt.scroll.y = std.math.clamp(cnt.scroll.y, 0, maxscroll);
@@ -1207,7 +948,7 @@ pub const MicroUI = struct {
                     base.h = sz;
 
                     self.updateControl(id, base, 0);
-                    if (self.mu_context.*.focus == id and self.mouse_down == c_microui.MU_MOUSE_LEFT) {
+                    if (self.focus == id and self.mouse_down == Mouse.LEFT) {
                         cnt.scroll.x += @divTrunc(self.mouse_delta.x * cs.x, base.w);
                     }
                     cnt.scroll.x = std.math.clamp(cnt.scroll.x, 0, maxscroll);
@@ -1230,19 +971,11 @@ pub const MicroUI = struct {
         }
     }
 
-    /// Tính toán và vẽ các thanh cuộn dọc và ngang tự động cho container.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Cộng thêm khoảng đệm `padding * 2` vào kích thước nội dung `content_size`.
-    /// - Đẩy `body` vào clip stack để đảm bảo thanh cuộn được vẽ trong giới hạn hiển thị.
-    /// - Nếu nội dung vượt quá chiều cao: thu hẹp chiều rộng `body.w -= scrollbar_size` để chừa chỗ cho thanh cuộn dọc.
-    /// - Nếu nội dung vượt quá chiều rộng: thu hẹp chiều cao `body.h -= scrollbar_size` cho thanh cuộn ngang.
-    /// - Gọi hàm `scrollbar()` cho trục dọc và trục ngang.
-    /// - Khôi phục vùng cắt qua `popClipRect()`.
+    /// Tính toán và vẽ toàn bộ thanh cuộn (dọc + ngang) cho container.
     pub fn scrollbars(self: *MicroUI, cnt: *Container, body: *math.Rect) void {
         const style_ptr = self.getStyle();
         const sz = style_ptr.scrollbar_size;
-        var content_size = math.Vec2.fromMu(cnt.*.content_size);
+        var content_size = cnt.*.content_size;
         content_size.x += style_ptr.padding * 2;
         content_size.y += style_ptr.padding * 2;
         self.pushClipRect(body.*);
@@ -1258,22 +991,15 @@ pub const MicroUI = struct {
     }
 
     // =========================================================================
-    // 9. WINDOWS, PANELS & POPUPS
+    // 4.11 Windows, Panels & Popups
     // =========================================================================
 
-    /// Bắt đầu một root container cấp cao nhất (Window, Popup).
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Đẩy container vào `container_stack` và `root_list`.
-    /// - Tạo command JUMP rỗng ở đầu (`cnt.head = pushJump(null)`).
-    /// - Kiểm tra xem chuột có nằm trên container không và so sánh z-index với `next_hover_root`
-    ///   để chọn root container nhận hover ưu tiên.
-    /// - Đẩy vùng cắt bao phủ không gian tọa độ cực đại vào `clip_stack`.
+    /// Bắt đầu một root container (cửa sổ độc lập hoặc popup trên cùng).
     pub fn beginRootContainer(self: *MicroUI, cnt: *Container) void {
         self.container_stack.push(cnt);
         self.root_list.push(cnt);
         cnt.*.head = self.command_list.pushJump(null) catch unreachable;
-        if (math.Rect.fromMu(cnt.rect).overlapsVec2(self.mouse_pos) and
+        if (cnt.rect.overlapsVec2(self.mouse_pos) and
             (self.next_hover_root == null or cnt.*.zindex > self.next_hover_root.?.zindex))
         {
             self.next_hover_root = cnt;
@@ -1281,12 +1007,7 @@ pub const MicroUI = struct {
         self.clip_stack.push(math.rect(0, 0, 0x1000000, 0x1000000));
     }
 
-    /// Kết thúc một root container cấp cao nhất (Window, Popup).
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Tạo command JUMP ở đuôi (`cnt.tail`) trỏ tới vị trí lệnh kế tiếp.
-    /// - Nối con trỏ head sang đầu chuỗi command tiếp theo.
-    /// - Rút clip rect và pop container khỏi stack.
+    /// Kết thúc một root container.
     pub fn endRootContainer(self: *MicroUI) void {
         const cnt = self.getCurrentContainer();
         cnt.*.tail = self.command_list.pushJump(null) catch unreachable;
@@ -1295,53 +1016,32 @@ pub const MicroUI = struct {
         self.popContainer();
     }
 
-    /// Bắt đầu một cửa sổ giao diện người dùng mới với các tùy chọn mặc định.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Chuyển tiếp tới `beginWindowEx(title, rect, 0)`.
-    /// - Trả về `true` nếu cửa sổ đang mở và hiển thị nội dung bên trong, `false` nếu bị đóng.
-    pub fn beginWindow(self: *MicroUI, title: [:0]const u8, rect: math.Rect) bool {
-        return self.beginWindowEx(title, rect, 0);
+    /// Bắt đầu một cửa sổ giao diện cơ bản.
+    pub fn beginWindow(self: *MicroUI, title: [:0]const u8, rect_val: math.Rect) bool {
+        return self.beginWindowEx(title, rect_val, 0);
     }
 
-    /// Bắt đầu một cửa sổ giao diện người dùng mới với các cờ tùy chọn mở rộng.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Sinh ID từ chuỗi `title` và lấy container qua `getContainer()`.
-    /// - Nếu container không tồn tại hoặc đã bị đóng (`open == 0`), trả về `false`.
-    /// - Đẩy ID vào `id_stack` và khởi tạo vị trí mặc định nếu chưa có kích thước.
-    /// - Bắt đầu root container qua `beginRootContainer()`.
-    /// - Vẽ nền cửa sổ (`MU_COLOR_WINDOWBG`) nếu không có cờ `MU_OPT_NOFRAME`.
-    /// - Xử lý thanh tiêu đề nếu không có cờ `MU_OPT_NOTITLE`:
-    ///   + Vẽ thanh tiêu đề `MU_COLOR_TITLEBG` với chiều cao `title_height`.
-    ///   + Kéo thả cửa sổ: cập nhật tọa độ `cnt.rect` theo `mouse_delta` khi giữ chuột trái trên tiêu đề.
-    ///   + Nút đóng (Close icon): chuyển trạng thái `cnt.open = 0` nếu người dùng click vào nút đóng.
-    /// - Thiết lập layout thân cửa sổ qua `pushContainerBody()`.
-    /// - Xử lý góc kéo giãn kích thước (Resize icon/grip) nếu không có cờ `MU_OPT_NORESIZE`.
-    /// - Tự động co giãn theo nội dung nếu có cờ `MU_OPT_AUTOSIZE`.
-    /// - Tự động đóng popup nếu click chuột ra ngoài cửa sổ khi có cờ `MU_OPT_POPUP`.
-    /// - Đẩy vùng cắt của thân container vào clip stack và trả về `true`.
-    pub fn beginWindowEx(self: *MicroUI, title: [:0]const u8, rect: math.Rect, opt: c_int) bool {
-        const id = self.getId(title.ptr, @intCast(title.len));
+    /// Bắt đầu một cửa sổ giao diện kèm các tùy chọn cấu hình `Opt`.
+    pub fn beginWindowEx(self: *MicroUI, title: [:0]const u8, rect_val: math.Rect, opt: i32) bool {
+        const id = self.getId(title.ptr, title.len);
         const cnt = self.getContainer(id, opt);
         if (cnt == null or cnt.?.open == 0) {
             return false;
         }
         self.id_stack.push(id);
         if (cnt.?.rect.w == 0) {
-            cnt.?.rect = rect.toMu();
+            cnt.?.rect = rect_val;
         }
         self.beginRootContainer(cnt.?);
         var body = cnt.?.rect;
-        const local_rect = math.Rect.fromMu(body);
-        if (~opt & c_microui.MU_OPT_NOFRAME != 0) {
-            self.drawFrame(local_rect, style_mod.COLOR_WINDOWBG);
+        if (~opt & Opt.NOFRAME != 0) {
+            self.drawFrame(body, style_mod.COLOR_WINDOWBG);
         }
-        if (~opt & c_microui.MU_OPT_NOTITLE != 0) {
+        if (~opt & Opt.NOTITLE != 0) {
             var tr = math.rect(
-                local_rect.x,
-                local_rect.y,
-                local_rect.w,
+                body.x,
+                body.y,
+                body.w,
                 self.getStyle().title_height,
             );
             self.drawFrame(tr, style_mod.COLOR_TITLEBG);
@@ -1351,7 +1051,7 @@ pub const MicroUI = struct {
                 const title_id = self.getId("!title", 6);
                 self.updateControl(title_id, tr, opt);
                 self.drawControlText(title, tr, style_mod.COLOR_TITLETEXT, opt);
-                if (title_id == self.mu_context.*.focus and self.mouse_down == c_microui.MU_MOUSE_LEFT) {
+                if (title_id == self.focus and self.mouse_down == Mouse.LEFT) {
                     cnt.?.rect.x += self.mouse_delta.x;
                     cnt.?.rect.y += self.mouse_delta.y;
                 }
@@ -1360,186 +1060,136 @@ pub const MicroUI = struct {
             }
 
             // Xử lý nút đóng cửa sổ
-            if (~opt & c_microui.MU_OPT_NOCLOSE != 0) {
+            if (~opt & Opt.NOCLOSE != 0) {
                 const close_id = self.getId("!close", 6);
                 const close_rect = math.rect(tr.x + tr.w - tr.h, tr.y, tr.h, tr.h);
                 tr.w -= close_rect.w;
-                self.drawIcon(c_microui.MU_ICON_CLOSE, close_rect, self.getStyle().colors[style_mod.ColorId.title_text_idx]);
+                self.drawIcon(Icon.CLOSE, close_rect, self.getStyle().colors[style_mod.ColorId.title_text_idx]);
                 self.updateControl(close_id, close_rect, opt);
-                if (self.mouse_pressed == c_microui.MU_MOUSE_LEFT and close_id == self.mu_context.*.focus) {
+                if (self.mouse_pressed == Mouse.LEFT and close_id == self.focus) {
                     cnt.?.open = 0;
                 }
             }
         }
-        self.pushContainerBody(cnt.?, math.Rect.fromMu(body), opt);
+        self.pushContainerBody(cnt.?, body, opt);
 
         // Xử lý thay đổi kích thước cửa sổ
-        if (~opt & c_microui.MU_OPT_NORESIZE != 0) {
+        if (~opt & Opt.NORESIZE != 0) {
             const size = self.getStyle().title_height;
             const resize_id = self.getId("!resize", 7);
             const resize_rect = math.rect(
-                local_rect.x + local_rect.w - size,
-                local_rect.y + local_rect.h - size,
+                body.x + body.w - size,
+                body.y + body.h - size,
                 size,
                 size,
             );
             self.updateControl(resize_id, resize_rect, opt);
-            if (resize_id == self.mu_context.*.focus and self.mouse_down == c_microui.MU_MOUSE_LEFT) {
+            if (resize_id == self.focus and self.mouse_down == Mouse.LEFT) {
                 cnt.?.rect.w = @max(96, cnt.?.rect.w + self.mouse_delta.x);
                 cnt.?.rect.h = @max(64, cnt.?.rect.h + self.mouse_delta.y);
             }
         }
 
         // Tự động khớp kích thước theo nội dung bên trong
-        if (opt & c_microui.MU_OPT_AUTOSIZE != 0) {
+        if (opt & Opt.AUTOSIZE != 0) {
             const r = self.getLayout().*.body;
             cnt.?.rect.w = cnt.?.content_size.x + (cnt.?.rect.w - r.w);
             cnt.?.rect.h = cnt.?.content_size.y + (cnt.?.rect.h - r.h);
         }
 
         // Đóng popup khi nhấn ra bên ngoài
-        if (opt & c_microui.MU_OPT_POPUP != 0 and
+        if (opt & Opt.POPUP != 0 and
             self.mouse_pressed != 0 and
             self.hover_root != cnt)
         {
             cnt.?.open = 0;
         }
 
-        self.pushClipRect(math.Rect.fromMu(cnt.?.body));
-        return c_microui.MU_RES_ACTIVE != 0;
+        self.pushClipRect(cnt.?.body);
+        return true;
     }
 
-    /// Kết thúc định nghĩa cửa sổ hiện tại.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Rút vùng cắt của thân cửa sổ qua `popClipRect()`.
-    /// - Kết thúc root container qua `endRootContainer()`.
+    /// Kết thúc cửa sổ giao diện.
     pub fn endWindow(self: *MicroUI) void {
         _ = self.clip_stack.pop();
         self.endRootContainer();
     }
 
-    /// Bắt đầu một bảng con (Panel) lồng bên trong container hiện tại với tùy chọn mặc định.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Chuyển tiếp tới `beginPanelEx(name, 0)`.
+    /// Bắt đầu một bảng con (Panel).
     pub fn beginPanel(self: *MicroUI, name: [:0]const u8) void {
         self.beginPanelEx(name, 0);
     }
 
-    /// Bắt đầu một bảng con (Panel) lồng bên trong container hiện tại với tùy chọn `opt`.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Đẩy ID tên bảng vào ID stack.
-    /// - Lấy container tương ứng từ pool.
-    /// - Đặt vùng rect cho panel theo ô layout tiếp theo (`layoutNext()`).
-    /// - Vẽ nền bảng `MU_COLOR_PANELBG` nếu không có cờ `MU_OPT_NOFRAME`.
-    /// - Đẩy container vào `container_stack` và thiết lập layout qua `pushContainerBody()`.
-    /// - Đẩy vùng cắt của panel vào clip stack.
-    pub fn beginPanelEx(self: *MicroUI, name: [:0]const u8, opt: c_int) void {
-        const id = self.getId(name.ptr, @intCast(name.len));
+    /// Bắt đầu một bảng con kèm tùy chọn `Opt`.
+    pub fn beginPanelEx(self: *MicroUI, name: [:0]const u8, opt: i32) void {
+        const id = self.getId(name.ptr, name.len);
         self.id_stack.push(id);
-        const cnt = self.getContainer(self.mu_context.*.last_id, opt) orelse return;
+        const cnt = self.getContainer(self.last_id, opt) orelse return;
         const tmp = self.layoutNext();
-        cnt.*.rect = tmp.toMu();
-        if (~opt & c_microui.MU_OPT_NOFRAME != 0) {
+        cnt.*.rect = tmp;
+        if (~opt & Opt.NOFRAME != 0) {
             self.drawFrame(tmp, style_mod.COLOR_PANELBG);
         }
         self.container_stack.push(cnt);
         self.pushContainerBody(cnt, tmp, opt);
-        self.pushClipRect(math.Rect.fromMu(cnt.*.body));
+        self.pushClipRect(cnt.*.body);
     }
 
-    /// Kết thúc bảng con (Panel).
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Rút vùng cắt của panel qua `popClipRect()`.
-    /// - Đóng container và đồng bộ kích thước nội dung qua `popContainer()`.
+    /// Kết thúc bảng con.
     pub fn endPanel(self: *MicroUI) void {
         _ = self.clip_stack.pop();
         self.popContainer();
     }
 
-    /// Mở một menu popup ngữ cảnh tại vị trí con trỏ chuột hiện tại.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Lấy container tương ứng với tên popup từ pool.
-    /// - Đặt làm `hover_root` và `next_hover_root` để ưu tiên tiếp nhận tương tác chuột.
-    /// - Đặt vị trí popup tại tọa độ chuột `mouse_pos`, kích thước khởi đầu (1, 1).
-    /// - Đặt trạng thái `open = 1` và đưa popup lên lớp trên cùng thông qua `bringToFront()`.
+    /// Mở một cửa sổ popup tại vị trí chuột hiện tại.
     pub fn openPopup(self: *MicroUI, name: [:0]const u8) void {
         const cnt = self.getContainerByName(name) orelse return;
         self.hover_root = cnt;
         self.next_hover_root = cnt;
-        cnt.*.rect = math.rect(self.mouse_pos.x, self.mouse_pos.y, 1, 1).toMu();
+        cnt.*.rect = math.rect(self.mouse_pos.x, self.mouse_pos.y, 1, 1);
         cnt.*.open = 1;
         self.bringToFront(cnt);
     }
 
-    /// Bắt đầu khối nội dung cho menu popup đã mở.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Cấu hình tập hợp cờ: `POPUP | AUTOSIZE | NORESIZE | NOSCROLL | NOTITLE | CLOSED`.
-    /// - Gọi `beginWindowEx` với các cờ trên.
-    /// - Trả về `MU_RES_ACTIVE` nếu popup đang mở, hoặc `0` nếu đóng.
-    pub fn beginPopup(self: *MicroUI, name: [:0]const u8) c_int {
-        const opt = c_microui.MU_OPT_POPUP | c_microui.MU_OPT_AUTOSIZE | c_microui.MU_OPT_NORESIZE |
-            c_microui.MU_OPT_NOSCROLL | c_microui.MU_OPT_NOTITLE | c_microui.MU_OPT_CLOSED;
-        return if (self.beginWindowEx(name, math.rect(0, 0, 0, 0), opt)) c_microui.MU_RES_ACTIVE else 0;
+    /// Bắt đầu render nội dung của popup đã được mở.
+    pub fn beginPopup(self: *MicroUI, name: [:0]const u8) i32 {
+        const opt = Opt.POPUP | Opt.AUTOSIZE | Opt.NORESIZE |
+            Opt.NOSCROLL | Opt.NOTITLE | Opt.CLOSED;
+        return if (self.beginWindowEx(name, math.rect(0, 0, 0, 0), opt)) Res.ACTIVE else 0;
     }
 
-    /// Kết thúc nội dung menu popup.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Gọi `endWindow()` để hoàn tất việc kết thúc popup container.
+    /// Kết thúc popup.
     pub fn endPopup(self: *MicroUI) void {
         self.endWindow();
     }
 
     // =========================================================================
-    // 10. COLLAPSIBLE HEADERS & TREE NODES
+    // 4.12 Tree Nodes & Collapsible Headers
     // =========================================================================
 
-    /// Widget tiêu đề đề mục có thể thu gọn (Collapsible Header) với tùy chọn mặc định.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Chuyển tiếp tới `headerEx(label, 0)`.
-    pub fn header(self: *MicroUI, label: [:0]const u8) c_int {
+    /// Vẽ một thanh tiêu đề thu gọn/mở rộng (Header).
+    pub fn header(self: *MicroUI, label: [:0]const u8) i32 {
         return self.headerEx(label, 0);
     }
 
-    /// Widget tiêu đề đề mục có thể thu gọn (Collapsible Header) với tùy chọn mở rộng.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Chuyển tiếp tới hàm nội bộ `headerInternal(label, false, opt)`.
-    pub fn headerEx(self: *MicroUI, label: [:0]const u8, opt: c_int) c_int {
+    /// Vẽ thanh tiêu đề kèm tùy chọn `Opt` (ví dụ: Opt.EXPANDED).
+    pub fn headerEx(self: *MicroUI, label: [:0]const u8, opt: i32) i32 {
         return self.headerInternal(label, false, opt);
     }
 
-    /// Trợ thủ nội bộ dùng chung cho cả Collapsible Header và Tree Node.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Sinh ID từ chuỗi nhãn `label`.
-    /// - Tra cứu trạng thái mở/đóng trong `treenode_pool`.
-    /// - Thiết lập hàng bố cục toàn chiều rộng (`layoutRow(&[_]i32{-1}, 0)`).
-    /// - Xử lý click chuột: đảo ngược trạng thái `active = !active` khi click vào widget.
-    /// - Cập nhật hoặc xóa phần tử khỏi `treenode_pool`.
-    /// - Vẽ hiệu ứng hover/button frame tương ứng.
-    /// - Vẽ biểu tượng tam giác `MU_ICON_EXPANDED` hoặc `MU_ICON_COLLAPSED`.
-    /// - Vẽ nhãn văn bản của tiêu đề.
-    /// - Trả về `MU_RES_ACTIVE` nếu đề mục đang ở trạng thái mở.
-    fn headerInternal(self: *MicroUI, label: [:0]const u8, is_treenode: bool, opt: c_int) c_int {
-        const id = self.getId(label.ptr, @intCast(label.len));
-        const pool = &self.mu_context.*.treenode_pool;
+    /// Hàm xử lý chung logic đóng mở và tương tác cho Header và TreeNode.
+    fn headerInternal(self: *MicroUI, label: [:0]const u8, is_treenode: bool, opt: i32) i32 {
+        const id = self.getId(label.ptr, label.len);
+        const pool = &self.treenode_pool;
         const opt_idx = self.poolGet(pool, id);
         self.layoutRow(&[_]i32{-1}, 0);
 
         var active = (opt_idx != null);
-        const expanded = if ((opt & c_microui.MU_OPT_EXPANDED) != 0) !active else active;
+        const expanded = if ((opt & Opt.EXPANDED) != 0) !active else active;
         var r = self.layoutNext();
         self.updateControl(id, r, 0);
 
-        if (self.mouse_pressed == c_microui.MU_MOUSE_LEFT and self.mu_context.*.focus == id) {
+        if (self.mouse_pressed == Mouse.LEFT and self.focus == id) {
             active = !active;
         }
 
@@ -1547,103 +1197,73 @@ pub const MicroUI = struct {
             if (active) {
                 self.poolUpdate(pool, idx);
             } else {
-                @memset(@as([*]u8, @ptrCast(&pool[idx]))[0..@sizeOf(c_microui.mu_PoolItem)], 0);
+                pool[idx] = .{};
             }
         } else if (active) {
             _ = self.poolInit(pool, id);
         }
 
         if (is_treenode) {
-            if (self.mu_context.*.hover == id) {
+            if (self.hover == id) {
                 self.drawFrame(r, style_mod.COLOR_BUTTONHOVER);
             }
         } else {
             self.drawControlFrame(id, r, style_mod.COLOR_BUTTON, 0);
         }
 
-        const icon_id: c_int = if (expanded) c_microui.MU_ICON_EXPANDED else c_microui.MU_ICON_COLLAPSED;
+        const icon_id: i32 = if (expanded) Icon.EXPANDED else Icon.COLLAPSED;
         const colors = self.getStyle().colors;
         self.drawIcon(icon_id, math.rect(r.x, r.y, r.h, r.h), colors[style_mod.ColorId.text_idx]);
         r.x += r.h - self.getStyle().padding;
         r.w -= r.h - self.getStyle().padding;
         self.drawControlText(label.ptr, r, style_mod.COLOR_TEXT, 0);
 
-        return if (expanded) c_microui.MU_RES_ACTIVE else 0;
+        return if (expanded) Res.ACTIVE else 0;
     }
 
-    /// Bắt đầu một nút cây thư mục (Tree Node) với tùy chọn mặc định.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Chuyển tiếp tới `beginTreenodeEx(name, 0)`.
-    pub fn beginTreenode(self: *MicroUI, name: [:0]const u8) c_int {
+    /// Bắt đầu một nút dạng cây (TreeNode).
+    pub fn beginTreenode(self: *MicroUI, name: [:0]const u8) i32 {
         return self.beginTreenodeEx(name, 0);
     }
 
-    /// Bắt đầu một nút cây thư mục (Tree Node) có khả năng đóng/mở nội dung con.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Gọi `headerInternal(label, true, opt)`.
-    /// - Nếu trạng thái là Active (đang mở):
-    ///   + Tăng khoảng lùi đầu dòng `indent += style.indent`.
-    ///   + Đẩy ID của treenode vào ID stack để cô lập các widget con bên trong.
-    /// - Trả về `MU_RES_ACTIVE` nếu đang mở, ngược lại trả về `0`.
-    pub fn beginTreenodeEx(self: *MicroUI, label: [:0]const u8, opt: c_int) c_int {
+    /// Bắt đầu nút dạng cây kèm tùy chọn `Opt`.
+    pub fn beginTreenodeEx(self: *MicroUI, label: [:0]const u8, opt: i32) i32 {
         const res = self.headerInternal(label, true, opt);
-        if ((res & c_microui.MU_RES_ACTIVE) != 0) {
+        if ((res & Res.ACTIVE) != 0) {
             self.getLayout().*.indent += self.getStyle().indent;
-            self.id_stack.push(self.mu_context.*.last_id);
+            self.id_stack.push(self.last_id);
         }
         return res;
     }
 
-    /// Kết thúc khối nội dung của nút cây thư mục.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Giảm khoảng lùi đầu dòng `indent -= style.indent`.
-    /// - Rút ID của treenode khỏi ID stack qua `popId()`.
+    /// Kết thúc nút dạng cây, thu hồi thụt lề layout.
     pub fn endTreenode(self: *MicroUI) void {
         self.getLayout().*.indent -= self.getStyle().indent;
         _ = self.id_stack.pop();
     }
 
     // =========================================================================
-    // 11. WIDGETS & CONTROLS
+    // 4.13 Widget Library
     // =========================================================================
 
-    /// Hiển thị một nhãn văn bản (Label) đơn dòng tĩnh.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Lấy vị trí hình chữ nhật kế tiếp từ `layoutNext()`.
-    /// - Vẽ văn bản bằng `drawControlText` với màu `MU_COLOR_TEXT`.
+    /// Vẽ nhãn văn bản (Label) một dòng.
     pub fn drawLabel(self: *MicroUI, label: [:0]const u8) void {
         self.drawControlText(label.ptr, self.layoutNext(), style_mod.COLOR_TEXT, 0);
     }
 
-    /// Hiển thị văn bản nhiều dòng với thuật toán tự động ngắt dòng theo từ (Word Wrap) và ký tự `\n`.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Kiểm tra rỗng: nếu `text.len == 0`, dừng ngay để tránh out-of-bounds.
-    /// - Khởi tạo một cột dọc riêng qua `layoutBeginColumn()` và `layoutEndColumn()`.
-    /// - Thiết lập hàng có chiều cao bằng `text_height(font)`.
-    /// - Quét qua chuỗi văn bản bằng con trỏ `p`:
-    ///   + Duyệt từng từ (ngăn cách bởi khoảng trắng hoặc ký tự xuống dòng `\n`).
-    ///   + Đo chiều rộng cộng dồn của các từ trên dòng hiện tại.
-    ///   + Nếu tổng chiều rộng vượt quá `rect.w` và đã có ít nhất một từ trước đó trên dòng:
-    ///     ngắt dòng tại đây và chuyển từ vừa quét sang dòng tiếp theo.
-    ///   + Nếu gặp ký tự `\n`: lập tức hoàn tất dòng hiện tại và xuống dòng mới.
-    ///   + Gọi `drawTextEx()` để vẽ lát cắt văn bản của dòng hiện tại (`text[line_start..line_end]`).
+    /// Vẽ đoạn văn bản nhiều dòng tự động xuống hàng theo từ (Word Wrapping).
     pub fn drawText(self: *MicroUI, text: []const u8) void {
         self.layoutBeginColumn();
         defer self.layoutEndColumn();
         if (text.len == 0) return;
 
         const font = self.getStyle().font;
-        self.layoutRow(&[_]i32{-1}, self.mu_context.*.text_height.?(font));
+        self.layoutRow(&[_]i32{-1}, self.text_height.?(font));
         const color_val = self.getStyle().colors[style_mod.ColorId.text_idx];
 
         var p: usize = 0;
         while (p < text.len) {
-            const rect = self.layoutNext();
+            const rect_val = self.layoutNext();
             var w: i32 = 0;
             const line_start = p;
             var line_end = p;
@@ -1654,15 +1274,15 @@ pub const MicroUI = struct {
                 }
                 const word_len = p - word_start;
                 if (word_len > 0) {
-                    w += self.mu_context.*.text_width.?(font, @ptrCast(&text[word_start]), @intCast(word_len));
+                    w += self.text_width.?(font, @ptrCast(&text[word_start]), @intCast(word_len));
                 }
-                if (w > rect.w and line_end != line_start) {
+                if (w > rect_val.w and line_end != line_start) {
                     p = word_start;
                     break;
                 }
                 if (p < text.len) {
                     const sep = text[p];
-                    w += self.mu_context.*.text_width.?(font, @ptrCast(&text[p]), 1);
+                    w += self.text_width.?(font, @ptrCast(&text[p]), 1);
                     line_end = p;
                     p += 1;
                     if (sep == '\n') break;
@@ -1671,38 +1291,27 @@ pub const MicroUI = struct {
                 }
             }
             if (line_end > line_start) {
-                self.drawTextEx(font, text[line_start..line_end], math.vec2(rect.x, rect.y), color_val);
+                self.drawTextEx(font, text[line_start..line_end], math.vec2(rect_val.x, rect_val.y), color_val);
             }
         }
     }
 
-    /// Widget nút bấm (Button) cơ bản với nhãn văn bản căn giữa.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Chuyển tiếp tới `buttonEx(label, 0, MU_OPT_ALIGNCENTER)`.
-    /// - Trả về `MU_RES_SUBMIT` nếu nút được click.
-    pub fn button(self: *MicroUI, label: [:0]const u8) c_int {
-        return self.buttonEx(label, 0, c_microui.MU_OPT_ALIGNCENTER);
+    /// Vẽ nút nhấn đơn giản (Button).
+    pub fn button(self: *MicroUI, label: [:0]const u8) i32 {
+        return self.buttonEx(label, 0, Opt.ALIGNCENTER);
     }
 
-    /// Widget nút bấm (Button) mở rộng hỗ trợ biểu tượng và tùy chọn căn lề.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Sinh ID từ nhãn `label` hoặc từ giá trị `icon` nếu không có nhãn.
-    /// - Lấy vị trí rect tiếp theo qua `layoutNext()`.
-    /// - Cập nhật trạng thái tương tác `updateControl()`.
-    /// - Trả về `MU_RES_SUBMIT` nếu nút chuột trái vừa được click và widget đang giữ focus.
-    /// - Vẽ nền nút qua `drawControlFrame(id, r, MU_COLOR_BUTTON, opt)` và nhãn/icon tương ứng.
-    pub fn buttonEx(self: *MicroUI, label: ?[:0]const u8, icon: c_int, opt: c_int) c_int {
-        var res: c_int = 0;
+    /// Vẽ nút nhấn kèm biểu tượng hoặc tùy chọn căn lề.
+    pub fn buttonEx(self: *MicroUI, label: ?[:0]const u8, icon: i32, opt: i32) i32 {
+        var res: i32 = 0;
         const id = if (label) |l|
-            self.getId(l.ptr, @intCast(l.len))
+            self.getId(l.ptr, l.len)
         else
-            self.getId(&icon, @sizeOf(c_int));
+            self.getId(&icon, @sizeOf(i32));
         const r = self.layoutNext();
         self.updateControl(id, r, opt);
-        if (self.mouse_pressed == c_microui.MU_MOUSE_LEFT and self.mu_context.*.focus == id) {
-            res |= c_microui.MU_RES_SUBMIT;
+        if (self.mouse_pressed == Mouse.LEFT and self.focus == id) {
+            res |= Res.SUBMIT;
         }
         self.drawControlFrame(id, r, style_mod.COLOR_BUTTON, opt);
         if (label) |l| {
@@ -1714,175 +1323,132 @@ pub const MicroUI = struct {
         return res;
     }
 
-    /// Widget hộp kiểm (Checkbox) với nhãn đi kèm.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Sinh ID từ địa chỉ con trỏ `value`.
-    /// - Chia ô layout thành 2 phần: ô vuông checkbox kích thước `h x h` và phần nhãn văn bản còn lại.
-    /// - Nếu chuột click vào ô kiểm: đảo ngược giá trị `value.* = if (value.* != 0) 0 else 1` và trả về `MU_RES_CHANGE`.
-    /// - Vẽ khung base cho ô vuông, vẽ biểu tượng `MU_ICON_CHECK` nếu `value != 0`.
-    /// - Vẽ nhãn văn bản bên cạnh.
-    pub fn checkBox(self: *MicroUI, label: [:0]const u8, value: [*c]c_int) c_int {
-        var res: c_int = 0;
-        const id = self.getId(@ptrCast(&value), @sizeOf([*c]c_int));
+    /// Vẽ hộp kiểm tra (CheckBox).
+    pub fn checkBox(self: *MicroUI, label: [:0]const u8, value: *i32) i32 {
+        var res: i32 = 0;
+        const id = self.getId(@ptrCast(&value), @sizeOf(*i32));
         const r = self.layoutNext();
         const box = math.rect(r.x, r.y, r.h, r.h);
         self.updateControl(id, r, 0);
-        if (self.mouse_pressed == c_microui.MU_MOUSE_LEFT and self.mu_context.*.focus == id) {
-            res |= c_microui.MU_RES_CHANGE;
+        if (self.mouse_pressed == Mouse.LEFT and self.focus == id) {
+            res |= Res.CHANGE;
             value.* = if (value.* != 0) 0 else 1;
         }
         self.drawControlFrame(id, box, style_mod.COLOR_BASE, 0);
         if (value.* != 0) {
-            self.drawIcon(c_microui.MU_ICON_CHECK, box, self.getStyle().colors[style_mod.ColorId.text_idx]);
+            self.drawIcon(Icon.CHECK, box, self.getStyle().colors[style_mod.ColorId.text_idx]);
         }
         const text_rect = math.rect(r.x + box.w, r.y, r.w - box.w, r.h);
         self.drawControlText(label.ptr, text_rect, style_mod.COLOR_TEXT, 0);
         return res;
     }
 
-    /// Wrapper tiện ích gọi `textBox` với slice bộ đệm chuỗi Zig `[]u8`.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Trả về 0 nếu slice rỗng.
-    /// - Chuyển tiếp tới `textBox(text.ptr, text.len)` và ép kiểu kết quả về `usize`.
-    pub fn drawTextBox(self: *MicroUI, text: []u8) usize {
-        if (text.len == 0) return 0;
-        return @as(usize, @intCast(self.textBox(text.ptr, @intCast(text.len))));
-    }
-
-    /// Widget hộp nhập văn bản (Textbox) cơ bản.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Chuyển tiếp tới `textBoxEx(text, len, 0)`.
-    pub fn textBox(self: *MicroUI, text: [*c]u8, len: c_int) c_int {
+    /// Vẽ ô nhập văn bản (TextBox).
+    pub fn textBox(self: *MicroUI, text: [*c]u8, len: i32) i32 {
         return self.textBoxEx(text, len, 0);
     }
 
-    /// Widget hộp nhập văn bản (Textbox) mở rộng với ID cố định theo địa chỉ vùng nhớ buffer.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Sinh ID bằng cách băm trực tiếp địa chỉ con trỏ của vùng đệm (`@intFromPtr(text)`).
-    ///   Thuật toán này đảm bảo ID không bị thay đổi giữa các frame khi các ký tự bên trong buffer thay đổi,
-    ///   giúp widget giữ nguyên tiêu điểm nhập liệu (focus) xuyên suốt phiên gõ phím.
-    /// - Lấy vị trí từ layout và gọi `textBoxRaw()`.
-    pub fn textBoxEx(self: *MicroUI, text: [*c]u8, len: c_int, opt: c_int) c_int {
+    /// Vẽ ô nhập văn bản kèm tùy chọn cấu hình `Opt`.
+    pub fn textBoxEx(self: *MicroUI, text: [*c]u8, len: i32, opt: i32) i32 {
         const addr = @intFromPtr(text);
         const id = self.getId(@ptrCast(&addr), @sizeOf(usize));
-        const rect = self.layoutNext();
-        return self.textBoxRaw(text, len, id, rect, opt);
+        const rect_val = self.layoutNext();
+        return self.textBoxRaw(text, len, id, rect_val, opt);
     }
 
-    /// Hàm xử lý cấp thấp cho hộp nhập văn bản (Textbox).
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Gọi `updateControl` với cờ `MU_OPT_HOLDFOCUS` để duy trì tiêu điểm khi click vào textbox.
-    /// - Khi widget đang giữ tiêu điểm (`focus == id`):
-    ///   + Nhận ký tự mới từ `ctx.input_text`, ghép vào cuối `buf` nếu còn dung lượng và đặt cờ `MU_RES_CHANGE`.
-    ///   + Bắt phím Backspace: xóa ký tự đứng trước, lùi qua các continuation byte của UTF-8 (`(byte & 0xc0) == 0x80`).
-    ///   + Bắt phím Enter / Return: hủy tiêu điểm (`setFocus(0)`) và đặt cờ `MU_RES_SUBMIT`.
-    /// - Vẽ khung nền widget bằng `drawControlFrame(id, rect, MU_COLOR_BASE, opt)`.
-    /// - Nếu widget đang có tiêu điểm:
-    ///   + Tính toán vị trí hiển thị text và con trỏ cursor nhấp nháy dựa trên độ rộng `text_width` và padding.
-    ///   + Giới hạn vùng vẽ qua `pushClipRect(rect)` và vẽ text + con trỏ dọc (1px).
-    /// - Nếu không có tiêu điểm:
-    ///   + Vẽ text tĩnh thông qua `drawControlText`.
-    pub fn textBoxRaw(self: *MicroUI, buf: [*c]u8, bufsz: c_int, id: c_uint, rect: math.Rect, opt: c_int) c_int {
-        var res: c_int = 0;
-        self.updateControl(id, rect, opt | c_microui.MU_OPT_HOLDFOCUS);
+    /// Xử lý logic cấp thấp của ô nhập văn bản (con trỏ nhấp nháy, chỉnh sửa UTF-8, Enter submit).
+    pub fn textBoxRaw(self: *MicroUI, buf: [*c]u8, bufsz: i32, id: Id, rect_val: math.Rect, opt: i32) i32 {
+        var res: i32 = 0;
+        self.updateControl(id, rect_val, opt | Opt.HOLDFOCUS);
 
-        if (self.mu_context.*.focus == id) {
+        if (self.focus == id) {
             // Xử lý text input
             var len: usize = std.mem.len(buf);
-            const input_slice = std.mem.sliceTo(&self.mu_context.*.input_text, 0);
-            if (bufsz > @as(c_int, @intCast(len)) + 1) {
-                const avail: usize = @intCast(bufsz - @as(c_int, @intCast(len)) - 1);
+            const input_slice = std.mem.sliceTo(&self.input_text, 0);
+            if (bufsz > @as(i32, @intCast(len)) + 1) {
+                const avail: usize = @intCast(bufsz - @as(i32, @intCast(len)) - 1);
                 const n = @min(avail, input_slice.len);
                 if (n > 0) {
                     @memcpy(buf[len .. len + n], input_slice[0..n]);
                     len += n;
                     buf[len] = 0;
-                    res |= c_microui.MU_RES_CHANGE;
+                    res |= Res.CHANGE;
                 }
             }
 
             // Xử lý backspace (hỗ trợ xóa đa byte UTF-8)
-            if ((self.key_pressed & c_microui.MU_KEY_BACKSPACE) != 0 and len > 0) {
+            if ((self.key_pressed & Key.BACKSPACE) != 0 and len > 0) {
                 len -= 1;
                 while (len > 0 and (buf[len] & 0xc0) == 0x80) {
                     len -= 1;
                 }
                 buf[len] = 0;
-                res |= c_microui.MU_RES_CHANGE;
+                res |= Res.CHANGE;
             }
 
             // Xử lý phím Enter / Return
-            if ((self.key_pressed & c_microui.MU_KEY_RETURN) != 0) {
+            if ((self.key_pressed & Key.RETURN) != 0) {
                 self.setFocus(0);
-                res |= c_microui.MU_RES_SUBMIT;
+                res |= Res.SUBMIT;
             }
         }
 
         // Vẽ widget
-        self.drawControlFrame(id, rect, style_mod.COLOR_BASE, opt);
-        if (self.mu_context.*.focus == id) {
+        self.drawControlFrame(id, rect_val, style_mod.COLOR_BASE, opt);
+        if (self.focus == id) {
             const colors = self.getStyle().colors;
-            const color = colors[style_mod.ColorId.text_idx];
+            const color_val = colors[style_mod.ColorId.text_idx];
             const font = self.getStyle().font;
             const text_span = std.mem.span(buf);
-            const textw = if (self.mu_context.*.text_width) |tw_fn|
+            const textw = if (self.text_width) |tw_fn|
                 tw_fn(font, buf, @intCast(text_span.len))
             else
                 0;
-            const texth = if (self.mu_context.*.text_height) |th_fn|
+            const texth = if (self.text_height) |th_fn|
                 th_fn(font)
             else
                 0;
             const padding = self.getStyle().padding;
-            const ofx = rect.w - padding - textw - 1;
-            const textx = rect.x + @min(ofx, padding);
-            const texty = rect.y + @divTrunc(rect.h - texth, 2);
+            const ofx = rect_val.w - padding - textw - 1;
+            const textx = rect_val.x + @min(ofx, padding);
+            const texty = rect_val.y + @divTrunc(rect_val.h - texth, 2);
 
-            self.pushClipRect(rect);
-            self.drawTextEx(font, text_span, .{ .x = textx, .y = texty }, color);
-            self.drawRect(math.rect(textx + textw, texty, 1, texth), color);
+            self.pushClipRect(rect_val);
+            self.drawTextEx(font, text_span, .{ .x = textx, .y = texty }, color_val);
+            self.drawRect(math.rect(textx + textw, texty, 1, texth), color_val);
             _ = self.clip_stack.pop();
         } else {
-            self.drawControlText(buf, rect, style_mod.COLOR_TEXT, opt);
+            self.drawControlText(buf, rect_val, style_mod.COLOR_TEXT, opt);
         }
 
         return res;
     }
 
-    /// Trợ thủ nội bộ chuyển đổi slider hoặc number box thành hộp nhập liệu khi người dùng Shift+Click.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Nếu chuột click kèm phím Shift: kích hoạt chế độ chỉnh sửa số (`number_edit = id`), định dạng giá trị thành chuỗi.
-    /// - Nếu widget đang ở chế độ chỉnh sửa: hiển thị textbox trực tiếp; khi nhấn Enter hoặc mất focus, chuyển đổi chuỗi ngược về float qua `strtod`.
-    fn numberTextbox(self: *MicroUI, value: *f32, r: math.Rect, id: c_uint) bool {
-        if (self.mouse_pressed == c_microui.MU_MOUSE_LEFT and
-            (self.key_down & c_microui.MU_KEY_SHIFT) != 0 and
-            self.mu_context.*.hover == id)
+    /// Hộp nhập số dạng popup khi người dùng Shift + Click chuột trái vào Slider hoặc Number.
+    fn numberTextbox(self: *MicroUI, value: *f32, r: math.Rect, id: Id) bool {
+        if (self.mouse_pressed == Mouse.LEFT and
+            (self.key_down & Key.SHIFT) != 0 and
+            self.hover == id)
         {
-            self.mu_context.*.number_edit = id;
-            _ = std.fmt.bufPrintSentinel(&self.mu_context.*.number_edit_buf, "{d:.3}", .{value.*}, 0) catch {
-                self.mu_context.*.number_edit_buf[0] = 0;
+            self.number_edit = id;
+            _ = std.fmt.bufPrintSentinel(&self.number_edit_buf, "{d:.3}", .{value.*}, 0) catch {
+                self.number_edit_buf[0] = 0;
             };
         }
-        if (self.mu_context.*.number_edit == id) {
+        if (self.number_edit == id) {
             const res = self.textBoxRaw(
-                @ptrCast(&self.mu_context.*.number_edit_buf),
-                @sizeOf(@TypeOf(self.mu_context.*.number_edit_buf)),
+                @ptrCast(&self.number_edit_buf),
+                @sizeOf(@TypeOf(self.number_edit_buf)),
                 id,
                 r,
                 0,
             );
-            if ((res & c_microui.MU_RES_SUBMIT) != 0 or self.mu_context.*.focus != id) {
-                const str = std.mem.span(@as([*:0]const u8, @ptrCast(&self.mu_context.*.number_edit_buf)));
+            if ((res & Res.SUBMIT) != 0 or self.focus != id) {
+                const str = std.mem.span(@as([*:0]const u8, @ptrCast(&self.number_edit_buf)));
                 if (std.fmt.parseFloat(f32, std.mem.trim(u8, str, " \t\r\n"))) |parsed| {
                     value.* = parsed;
                 } else |_| {}
-                self.mu_context.*.number_edit = 0;
+                self.number_edit = 0;
             } else {
                 return true;
             }
@@ -1890,29 +1456,15 @@ pub const MicroUI = struct {
         return false;
     }
 
-    /// Widget thanh trượt (Slider) cơ bản trong khoảng [low, high].
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Chuyển tiếp tới `sliderEx(value, low, high, 0, MU_SLIDER_FMT, MU_OPT_ALIGNCENTER)`.
-    pub fn slider(self: *MicroUI, value: *f32, low: f32, high: f32) c_int {
-        return self.sliderEx(value, low, high, 0, c_microui.MU_SLIDER_FMT, c_microui.MU_OPT_ALIGNCENTER);
+    /// Thanh trượt giá trị số thực (Slider).
+    pub fn slider(self: *MicroUI, value: *f32, low: f32, high: f32) i32 {
+        return self.sliderEx(value, low, high, 0, SLIDER_FMT, Opt.ALIGNCENTER);
     }
 
-    /// Widget thanh trượt (Slider) mở rộng với bước nhảy (step) và định dạng hiển thị số.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Sinh ID từ con trỏ `value`.
-    /// - Kiểm tra chế độ nhập liệu số `numberTextbox()`.
-    /// - Cập nhật tương tác qua `updateControl()`.
-    /// - Nếu đang kéo chuột trái trên slider:
-    ///   + Nội suy giá trị mới theo tỷ lệ vị trí chuột trên thanh: `v = low + (mouse.x - base.x) * (high - low) / base.w`.
-    ///   + Làm tròn giá trị theo bước nhảy `step` nếu có.
-    /// - Giới hạn giá trị trong khoảng `[low, high]` bằng `std.math.clamp`.
-    /// - Vẽ rãnh trượt `base`, tính vị trí nút trượt `thumb` và vẽ nút trượt.
-    /// - Hiển thị giá trị số dạng text căn giữa trên slider.
-    pub fn sliderEx(self: *MicroUI, value: *f32, low: f32, high: f32, step: f32, fmt: [*c]const u8, opt: c_int) c_int {
-        var buf: [c_microui.MU_MAX_FMT + 1]u8 = undefined;
-        var res: c_int = 0;
+    /// Thanh trượt kèm bước nhảy (step), chuỗi định dạng (fmt) và tùy chọn `Opt`.
+    pub fn sliderEx(self: *MicroUI, value: *f32, low: f32, high: f32, step: f32, fmt: [*c]const u8, opt: i32) i32 {
+        var buf: [MAX_FMT + 1]u8 = undefined;
+        var res: i32 = 0;
         const last = value.*;
         var v = last;
         const id = self.getId(@ptrCast(&value), @sizeOf(*f32));
@@ -1924,8 +1476,8 @@ pub const MicroUI = struct {
 
         self.updateControl(id, base, opt);
 
-        if (self.mu_context.*.focus == id and
-            ((self.mouse_down | self.mouse_pressed) & c_microui.MU_MOUSE_LEFT) != 0)
+        if (self.focus == id and
+            ((self.mouse_down | self.mouse_pressed) & Mouse.LEFT) != 0)
         {
             if (base.w > 0) {
                 v = low + @as(f32, @floatFromInt(self.mouse_pos.x - base.x)) * (high - low) / @as(f32, @floatFromInt(base.w));
@@ -1938,45 +1490,35 @@ pub const MicroUI = struct {
         v = std.math.clamp(v, low, high);
         value.* = v;
         if (last != v) {
-            res |= c_microui.MU_RES_CHANGE;
+            res |= Res.CHANGE;
         }
 
         self.drawControlFrame(id, base, style_mod.COLOR_BASE, opt);
 
+        var thumb = base;
         const w = self.getStyle().thumb_size;
-        const x: i32 = if (high > low)
-            @intFromFloat((v - low) * @as(f32, @floatFromInt(base.w - w)) / (high - low))
-        else
-            0;
-        const thumb = math.rect(base.x + x, base.y, w, base.h);
+        thumb.w = w;
+        const range = high - low;
+        if (range > 0 and base.w > w) {
+            thumb.x += @intFromFloat(@as(f32, @floatFromInt(base.w - w)) * (v - low) / range);
+        }
         self.drawControlFrame(id, thumb, style_mod.COLOR_BUTTON, opt);
 
-        const formatted = formatReal(&buf, fmt, v);
+        const formatted = formatReal(&buf, fmt, value.*);
         self.drawControlText(formatted.ptr, base, style_mod.COLOR_TEXT, opt);
 
         return res;
     }
 
-    /// Widget ô số có thể kéo điều chỉnh (Number) cơ bản với bước nhảy `step`.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Chuyển tiếp tới `numberEx(value, step, MU_SLIDER_FMT, MU_OPT_ALIGNCENTER)`.
-    pub fn number(self: *MicroUI, value: *f32, step: f32) c_int {
-        return self.numberEx(value, step, c_microui.MU_SLIDER_FMT, c_microui.MU_OPT_ALIGNCENTER);
+    /// Điều khiển chỉnh sửa số thực dạng kéo rê chuột (Number Drag).
+    pub fn number(self: *MicroUI, value: *f32, step: f32) i32 {
+        return self.numberEx(value, step, SLIDER_FMT, Opt.ALIGNCENTER);
     }
 
-    /// Widget ô số có thể kéo điều chỉnh (Number) mở rộng.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Sinh ID từ địa chỉ con trỏ `value`.
-    /// - Kiểm tra chế độ nhập liệu số `numberTextbox()`.
-    /// - Cập nhật tương tác qua `updateControl()`.
-    /// - Khi giữ chuột trái và kéo ngang: cộng dồn độ dịch chuyển chuột `mouse_delta.x * step` vào `value`.
-    /// - Bật cờ `MU_RES_CHANGE` nếu giá trị thay đổi.
-    /// - Vẽ khung nền và nhãn số hiển thị.
-    pub fn numberEx(self: *MicroUI, value: *f32, step: f32, fmt: [*c]const u8, opt: c_int) c_int {
-        var buf: [c_microui.MU_MAX_FMT + 1]u8 = undefined;
-        var res: c_int = 0;
+    /// Điều khiển chỉnh sửa số thực kéo rê chuột kèm định dạng và tùy chọn `Opt`.
+    pub fn numberEx(self: *MicroUI, value: *f32, step: f32, fmt: [*c]const u8, opt: i32) i32 {
+        var buf: [MAX_FMT + 1]u8 = undefined;
+        var res: i32 = 0;
         const id = self.getId(@ptrCast(&value), @sizeOf(*f32));
         const base = self.layoutNext();
         const last = value.*;
@@ -1987,12 +1529,12 @@ pub const MicroUI = struct {
 
         self.updateControl(id, base, opt);
 
-        if (self.mu_context.*.focus == id and (self.mouse_down & c_microui.MU_MOUSE_LEFT) != 0) {
+        if (self.focus == id and (self.mouse_down & Mouse.LEFT) != 0) {
             value.* += @as(f32, @floatFromInt(self.mouse_delta.x)) * step;
         }
 
         if (value.* != last) {
-            res |= c_microui.MU_RES_CHANGE;
+            res |= Res.CHANGE;
         }
 
         self.drawControlFrame(id, base, style_mod.COLOR_BASE, opt);

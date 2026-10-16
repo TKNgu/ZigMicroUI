@@ -1,6 +1,6 @@
 const std = @import("std");
-const c_microui = @import("c_microui");
-const MicroUI = @import("../microui/microui.zig").MicroUI;
+const microui_mod = @import("../microui/microui.zig");
+const MicroUI = microui_mod.MicroUI;
 const LogBuf = @import("../ui/log_window.zig").LogBuf;
 const uint8Slider = @import("../microui/slider.zig").uint8Slider;
 
@@ -26,7 +26,7 @@ pub fn testWindow(microui: *MicroUI, logbuf: *LogBuf, checks: *[3]i32, bg: *[3]f
     }
 
     // labels + buttons
-    if (microui.headerEx("Test Buttons", c_microui.MU_OPT_EXPANDED) != 0) {
+    if (microui.headerEx("Test Buttons", microui_mod.Opt.EXPANDED) != 0) {
         microui.layoutRow(&[_]i32{ 140, -110, -1 }, 0);
         microui.drawLabel("Test buttons 1:");
         if (microui.button("Button 1") != 0) {
@@ -55,7 +55,7 @@ pub fn testWindow(microui: *MicroUI, logbuf: *LogBuf, checks: *[3]i32, bg: *[3]f
     }
 
     // tree
-    if (microui.headerEx("Tree and Text", c_microui.MU_OPT_EXPANDED) != 0) {
+    if (microui.headerEx("Tree and Text", microui_mod.Opt.EXPANDED) != 0) {
         microui.layoutRow(&[_]i32{ 160, -1 }, 0);
         {
             microui.layoutBeginColumn();
@@ -121,7 +121,7 @@ pub fn testWindow(microui: *MicroUI, logbuf: *LogBuf, checks: *[3]i32, bg: *[3]f
     }
 
     // background color sliders
-    if (microui.headerEx("Background Color", c_microui.MU_OPT_EXPANDED) != 0) {
+    if (microui.headerEx("Background Color", microui_mod.Opt.EXPANDED) != 0) {
         microui.layoutRow(&[_]i32{ -78, -1 }, 74);
         // sliders
         {
@@ -159,6 +159,6 @@ pub fn testWindow(microui: *MicroUI, logbuf: *LogBuf, checks: *[3]i32, bg: *[3]f
         microui.drawRect(rect, preview_color);
         var buf: [32]u8 = undefined;
         const view = std.fmt.bufPrintSentinel(&buf, "#{x:02}{x:02}{x:02}", .{ preview_color.r, preview_color.g, preview_color.b }, 0) catch unreachable;
-        microui.drawControlText(view[0..], rect, MicroUI.style.COLOR_TEXT, c_microui.MU_OPT_ALIGNCENTER);
+        microui.drawControlText(view[0..], rect, MicroUI.COLOR_TEXT, microui_mod.Opt.ALIGNCENTER);
     }
 }
