@@ -11,6 +11,7 @@ const styleWindow = @import("ui/style_window.zig").styleWindow;
 const LogBuf = @import("ui/log_window.zig").LogBuf;
 const logWindow = @import("ui/log_window.zig").logWindow;
 const testWindow = @import("ui/test_window.zig").testWindow;
+const command_mod = @import("microui/command.zig");
 
 extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 
@@ -189,20 +190,20 @@ pub fn main(init: std.process.Init) !void {
             continue;
         }
 
-        var cmd: [*c]c_microui.mu_Command = null;
+        var cmd: ?*command_mod.Command = null;
         while (microui.nextCommand(&cmd) != 0) {
-            const cmd_type = cmd.*.type;
-            if (cmd_type == c_microui.MU_COMMAND_TEXT) {
-                const str_ptr: [*:0]const u8 = @ptrCast(&(cmd.*.text.str[0]));
+            const cmd_type = cmd.?.type;
+            if (cmd_type == command_mod.Type.text) {
+                const str_ptr: [*:0]const u8 = @ptrCast(&(cmd.?.text.text[0]));
                 const s = std.mem.span(str_ptr);
-                const rect = cmd.*.text.pos;
+                const rect = cmd.?.text.pos;
                 render_engine.drawText(s, math.vec.Vec2(f32).init(
                     @as(f32, @floatFromInt(rect.x)),
                     @as(f32, @floatFromInt(rect.y)),
                 )) catch {};
-            } else if (cmd_type == c_microui.MU_COMMAND_RECT) {
-                const rect = cmd.*.rect;
-                const color = cmd.*.rect.color;
+            } else if (cmd_type == command_mod.Type.rect) {
+                const rect = cmd.?.rect;
+                const color = cmd.?.rect.color;
                 render_engine.fillRect(math.rect.Rect2(f32).init(
                     @as(f32, @floatFromInt(rect.rect.x)),
                     @as(f32, @floatFromInt(rect.rect.y)),
@@ -214,17 +215,17 @@ pub fn main(init: std.process.Init) !void {
                     .b = color.b,
                     .a = color.a,
                 }) catch {};
-            } else if (cmd_type == c_microui.MU_COMMAND_ICON) {
-                const rect = cmd.*.icon.rect;
-                const id: usize = @intCast(cmd.*.icon.id);
+            } else if (cmd_type == command_mod.Type.icon) {
+                const rect = cmd.?.icon.rect;
+                const id: usize = @intCast(cmd.?.icon.id);
                 render_engine.drawIcon(id, math.rect.Rect2(f32).init(
                     @as(f32, @floatFromInt(rect.x)),
                     @as(f32, @floatFromInt(rect.y)),
                     @as(f32, @floatFromInt(rect.w)),
                     @as(f32, @floatFromInt(rect.h)),
                 )) catch {};
-            } else if (cmd_type == c_microui.MU_COMMAND_CLIP) {
-                const rect = cmd.*.clip.rect;
+            } else if (cmd_type == command_mod.Type.clip) {
+                const rect = cmd.?.clip.rect;
                 _ = z_render.clip(math.rect.Rect2(f32).init(
                     @as(f32, @floatFromInt(rect.x)),
                     @as(f32, @floatFromInt(rect.y)),

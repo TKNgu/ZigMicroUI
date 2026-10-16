@@ -6,6 +6,20 @@ pub const Rect = math.Rect;
 pub const Vec2 = math.Vec2;
 const style_mod = @import("style.zig");
 pub const style = style_mod;
+const command_mod = @import("command.zig");
+
+const Container = struct {
+    // head: [*c]c_microui.mu_Command = null,
+    // tail: [*c]c_microui.mu_Command = null,
+    head: ?*command_mod.Command = null,
+    tail: ?*command_mod.Command = null,
+    rect: c_microui.mu_Rect = @import("std").mem.zeroes(c_microui.mu_Rect),
+    body: c_microui.mu_Rect = @import("std").mem.zeroes(c_microui.mu_Rect),
+    content_size: c_microui.mu_Vec2 = @import("std").mem.zeroes(c_microui.mu_Vec2),
+    scroll: c_microui.mu_Vec2 = @import("std").mem.zeroes(c_microui.mu_Vec2),
+    zindex: c_int = 0,
+    open: c_int = 0,
+};
 
 // =============================================================================
 // ZIG STRING & FLOAT FORMATTING HELPERS
@@ -58,8 +72,12 @@ pub const MicroUI = struct {
     id_stack: stack.BuildStack(c_uint, 32) = .{},
     clip_stack: stack.BuildStack(math.Rect, 32) = .{},
     layout_stack: stack.BuildStack(c_microui.mu_Layout, 16) = .{},
-    container_stack: stack.BuildStack([*c]c_microui.mu_Container, 32) = .{},
-    root_list: stack.BuildStack([*c]c_microui.mu_Container, 32) = .{},
+    container_stack: stack.BuildStack(*Container, 32) = .{},
+    root_list: stack.BuildStack(*Container, 32) = .{},
+    hover_root: ?*Container = null,
+    next_hover_root: ?*Container = null,
+    scroll_target: ?*Container = null,
+    containers: [48]Container = undefined,
 
     last_zindex: i32 = 0,
     updated_focus: bool = false,
@@ -73,6 +91,8 @@ pub const MicroUI = struct {
     last_mouse_pos: math.Vec2 = .{},
     mouse_delta: math.Vec2 = .{},
     scroll_delta: math.Vec2 = .{},
+
+    command_list: command_mod.CommandList,
 
     // =========================================================================
     // 1. LIFECYCLE & CORE CONTEXT MANAGEMENT
@@ -100,6 +120,9 @@ pub const MicroUI = struct {
         const ctx = try allocator.create(c_microui.mu_Context);
         errdefer allocator.destroy(ctx);
 
+        const command_list = try command_mod.CommandList.init(allocator);
+        errdefer command_list.deinit(allocator);
+
         @memset(@as([*]u8, @ptrCast(ctx))[0..@sizeOf(c_microui.mu_Context)], 0);
         ctx.*._style = default_style.toMu().*;
         ctx.*.style = &ctx.*._style;
@@ -108,6 +131,7 @@ pub const MicroUI = struct {
 
         return .{
             .mu_context = ctx,
+            .command_list = command_list,
         };
     }
 
@@ -116,7 +140,159 @@ pub const MicroUI = struct {
     /// Thuật toán & Thiết kế:
     /// - Giải phóng vùng nhớ struct `mu_Context` đã cấp phát ban đầu thông qua allocator.
     pub fn deinit(self: *MicroUI, allocator: std.mem.Allocator) void {
+        self.command_list.deinit(allocator);
         allocator.destroy(self.mu_context);
+    }
+
+    // Comand -----------------------------------------------
+    //
+    //
+    //
+
+    pub fn clearCommandList(self: *MicroUI) void {
+        // self.mu_context.*.command_list.idx = 0;
+        self.command_list.clear();
+    }
+
+    // /// Cấp phát và ghi một lệnh vẽ mới vào mảng lệnh tuyến tính (`command_list`).
+    // ///
+    // /// Thuật toán & Thiết kế:
+    // /// - Chuyển tiếp tới hàm nội bộ `rawPushCommand`.
+    // /// - Đảm bảo kích thước được căn chỉnh 8-byte và ghi nhận vào command stream.
+    // pub fn pushCommand(self: *MicroUI, cmd_type: c_int, size: c_int) [*c]c_microui.mu_Command {
+    //     const cmd: [*c]c_microui.mu_Command =
+    //         @ptrCast(@alignCast(&self.mu_context.*.command_list.items[@intCast(self.mu_context.*.command_list.idx)]));
+    //     const aligned_size = (size + 7) & ~@as(c_int, 7);
+    //     std.debug.assert(self.mu_context.*.command_list.idx + aligned_size < self.mu_context.*.command_list.items.len);
+    //     cmd.*.base.type = cmd_type;
+    //     cmd.*.base.size = aligned_size;
+    //     self.mu_context.*.command_list.idx += aligned_size;
+    //     return cmd;
+    // }
+
+    /// Đẩy lệnh JUMP để chuyển tiếp luồng duyệt command list đến một vị trí đích.
+    ///
+    /// Thuật toán & Thiết kế:
+    /// - Cấp phát một command kiểu `MU_COMMAND_JUMP` trong command buffer.
+    /// - Gán con trỏ đích `jump.dst = dst`.
+    pub fn pushJump(self: *MicroUI, dst: [*c]c_microui.mu_Command) [*c]c_microui.mu_Command {
+        // _ = self.command_list.pushJump(dst) catch unreachable;
+
+        const cmd = self.pushCommand(c_microui.MU_COMMAND_JUMP, @sizeOf(c_microui.mu_JumpCommand));
+        cmd.*.jump.dst = dst;
+        return cmd;
+    }
+
+    pub fn pushRect(self: *MicroUI, draw_rect: math.Rect, color: Color) void {
+        // const cmd = self.pushCommand(c_microui.MU_COMMAND_RECT, @sizeOf(c_microui.mu_RectCommand));
+        const cmd = self.command_list.pushRect(draw_rect, color) catch unreachable;
+        // cmd.*.rect.rect = draw_rect.toMu();
+        cmd.*.rect.rect = draw_rect;
+        // cmd.*.rect.color = color.toMu();
+        cmd.*.rect.color = color;
+    }
+
+    pub fn pushIcon(self: *MicroUI, id: c_int, draw_rect: math.Rect, color: Color) void {
+        // const cmd = self.pushCommand(c_microui.MU_COMMAND_ICON, @sizeOf(c_microui.mu_IconCommand));
+        const cmd = self.command_list.pushIcon(id, draw_rect, color) catch unreachable;
+        cmd.*.icon.id = id;
+        // cmd.*.icon.rect = draw_rect.toMu();
+        cmd.*.icon.rect = draw_rect;
+        // cmd.*.icon.color = color.toMu();
+        cmd.*.icon.color = color;
+    }
+
+    pub fn pushClip(self: *MicroUI, r: math.Rect) void {
+        // const cmd = self.pushCommand(c_microui.MU_COMMAND_CLIP, @sizeOf(c_microui.mu_ClipCommand));
+        const cmd = self.command_list.pushClip(r) catch unreachable;
+        // cmd.*.clip.rect = r.toMu();
+        cmd.*.clip.rect = r;
+    }
+
+    pub fn pushText(
+        self: *MicroUI,
+        text: []const u8,
+        pos: math.Vec2,
+        color: Color,
+        font: c_microui.mu_Font,
+    ) void {
+        _ = self.command_list.pushText(text, pos, color, font) catch unreachable;
+
+        // const cmd = self.pushCommand(
+        //     c_microui.MU_COMMAND_TEXT,
+        //     @sizeOf(c_microui.mu_TextCommand) + @as(c_int, @intCast(text.len)),
+        // );
+        // const cmd = self.command_list.pushCommand(command_mod.Type.text);
+        const cmd = self.command_list.pushCommandText(text.len) catch unreachable;
+
+        // const tmp: [*]u8 = @ptrCast(&cmd.*.text.str);
+        const tmp: [*]u8 = @ptrCast(&cmd.*.text.text);
+        @memcpy(tmp[0..text.len], text);
+        tmp[text.len] = 0;
+        cmd.*.text.pos = .{
+            .x = pos.x,
+            .y = pos.y,
+        };
+        // cmd.*.text.color = color.toMu();
+        cmd.*.text.color = color;
+        cmd.*.text.font = font;
+    }
+
+    pub fn getBegin(self: *MicroUI) *command_mod.Command {
+        return self.command_list.getBegin().?;
+        // _ = self.command_list.getBegin();
+        //
+        // return @ptrCast(@alignCast(&self.mu_context.*.command_list.items));
+    }
+
+    pub fn getEnd(self: *MicroUI) ?*anyopaque {
+        return self.command_list.getEnd();
+
+        // const tmp: ?*anyopaque =
+        //     @ptrCast(&self.mu_context.*.command_list.items[@intCast(self.mu_context.*.command_list.idx)]);
+        // return tmp;
+    }
+
+    /// Duyệt lệnh vẽ tiếp theo trong command buffer (Iterator).
+    ///
+    /// Thuật toán & Thiết kế:
+    /// - Nếu `cmd.* == null`: bắt đầu từ đầu buffer (`command_list.items`).
+    /// - Nếu `cmd.* != null`: tịnh tiến con trỏ theo kích thước `cmd.base.size`.
+    /// - Duyệt qua và giải quyết các bước nhảy `MU_COMMAND_JUMP` bằng cách chuyển con trỏ tới `jump.dst`.
+    /// - Dừng lại và trả về `1` khi gặp lệnh vẽ hợp lệ (Rect, Text, Icon, Clip).
+    /// - Trả về `0` khi đã duyệt hết toàn bộ chuỗi lệnh tới cuối buffer.
+    pub fn nextCommand(self: *MicroUI, cmd: *?*command_mod.Command) c_int {
+        // const items_ptr: [*]u8 = &self.mu_context.*.command_list.items;
+        // const end_ptr = items_ptr + @as(usize, @intCast(self.mu_context.*.command_list.idx));
+        // if (cmd.* != null) {
+        //     const raw: [*]u8 = @ptrCast(cmd.*);
+        //     cmd.* = @ptrCast(@alignCast(raw + @as(usize, @intCast(cmd.*.*.base.size))));
+        // } else {
+        //     cmd.* = @ptrCast(@alignCast(items_ptr));
+        // }
+        // while (@as([*]u8, @ptrCast(cmd.*)) != end_ptr) {
+        //     if (cmd.*.*.base.type != c_microui.MU_COMMAND_JUMP) {
+        //         return 1;
+        //     }
+        //     cmd.* = @ptrCast(@alignCast(cmd.*.*.jump.dst));
+        // }
+        // return 0;
+
+        if (cmd.* == null) {
+            cmd.* = self.command_list.getBegin();
+        } else {
+            const tmp = cmd.*.?;
+            cmd.* = tmp.base.next;
+        }
+
+        const end_ptr = self.command_list.getEnd();
+        while (cmd.* != end_ptr) {
+            if (cmd.*.?.base.type != command_mod.Type.jump) {
+                return 1;
+            }
+            cmd.* = cmd.*.?.jump.dst;
+        }
+        return 0;
     }
 
     /// Bắt đầu một frame giao diện mới, chuẩn bị danh sách lệnh và cập nhật input.
@@ -129,18 +305,21 @@ pub const MicroUI = struct {
     /// - Tăng chỉ số frame hiện tại (`frame += 1`).
     pub fn begin(self: *MicroUI) void {
         std.debug.assert(self.mu_context.*.text_width != null and self.mu_context.*.text_height != null);
-        self.mu_context.*.command_list.idx = 0;
+
+        // Update command
+        self.clearCommandList();
+
         self.root_list.clear();
-        self.mu_context.*.scroll_target = null;
-        self.mu_context.*.hover_root = self.mu_context.*.next_hover_root;
-        self.mu_context.*.next_hover_root = null;
+        self.scroll_target = null;
+        self.hover_root = self.next_hover_root;
+        self.next_hover_root = null;
         self.mouse_delta.x = self.mouse_pos.x - self.last_mouse_pos.x;
         self.mouse_delta.y = self.mouse_pos.y - self.last_mouse_pos.y;
         self.frame += 1;
     }
 
     /// Hàm so sánh trật tự chiều sâu Z-Index giữa hai root container phục vụ thuật toán sắp xếp.
-    fn compareContainersByZIndex(_: void, a: [*c]c_microui.mu_Container, b: [*c]c_microui.mu_Container) bool {
+    fn compareContainersByZIndex(_: void, a: *Container, b: *Container) bool {
         return a.*.zindex < b.*.zindex;
     }
 
@@ -174,11 +353,11 @@ pub const MicroUI = struct {
         self.updated_focus = false;
 
         if (self.mouse_pressed != 0 and
-            self.mu_context.*.next_hover_root != null and
-            self.mu_context.*.next_hover_root.*.zindex < self.last_zindex and
-            self.mu_context.*.next_hover_root.*.zindex >= 0)
+            self.next_hover_root != null and
+            self.next_hover_root.?.zindex < self.last_zindex and
+            self.next_hover_root.?.zindex >= 0)
         {
-            self.bringToFront(self.mu_context.*.next_hover_root.?);
+            self.bringToFront(self.next_hover_root.?);
         }
 
         self.key_pressed = 0;
@@ -189,18 +368,23 @@ pub const MicroUI = struct {
 
         const root_items = self.root_list.getSlice();
         const n = root_items.len;
-        std.mem.sort([*c]c_microui.mu_Container, root_items, {}, compareContainersByZIndex);
+        std.mem.sort(*Container, root_items, {}, compareContainersByZIndex);
 
         for (root_items, 0..) |cnt, i| {
             if (i == 0) {
-                const cmd: [*c]c_microui.mu_Command = @ptrCast(@alignCast(&self.mu_context.*.command_list.items));
-                cmd.*.jump.dst = @ptrCast(@as([*]u8, @ptrCast(cnt.*.head)) + @sizeOf(c_microui.mu_JumpCommand));
+                const cmd = self.getBegin();
+                cmd.*.jump.dst = cnt.*.head.?.base.next.?;
+                // cmd.*.jump.dst = @ptrCast(
+                //     @as([*]u8, @ptrCast(cnt.*.head)) + @sizeOf(c_microui.mu_JumpCommand),
+                // );
             } else {
                 const prev = root_items[i - 1];
-                prev.*.tail.*.jump.dst = @ptrCast(@as([*]u8, @ptrCast(cnt.*.head)) + @sizeOf(c_microui.mu_JumpCommand));
+                // prev.*.tail.*.jump.dst = @ptrCast(@as([*]u8, @ptrCast(cnt.*.head)) + @sizeOf(c_microui.mu_JumpCommand));
+                prev.*.tail.?.jump.dst = cnt.*.head.?.base.next.?;
             }
             if (i == n - 1) {
-                cnt.*.tail.*.jump.dst = @ptrCast(&self.mu_context.*.command_list.items[@intCast(self.mu_context.*.command_list.idx)]);
+                // cnt.*.tail.*.jump.dst = self.getEnd();
+                cnt.*.tail.?.jump.dst = self.command_list.getEnd().?;
             }
         }
     }
@@ -322,63 +506,6 @@ pub const MicroUI = struct {
     /// Thuật toán & Thiết kế:
     /// - Cấp phát một command kiểu `MU_COMMAND_CLIP` với kích thước struct `mu_ClipCommand`.
     /// - Gán vùng giới hạn hiển thị `clip.rect = rect`.
-    pub fn setClip(self: *MicroUI, r: math.Rect) void {
-        const cmd = self.pushCommand(c_microui.MU_COMMAND_CLIP, @sizeOf(c_microui.mu_ClipCommand));
-        cmd.*.clip.rect = r.toMu();
-    }
-
-    /// Cấp phát và ghi một lệnh vẽ mới vào mảng lệnh tuyến tính (`command_list`).
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Chuyển tiếp tới hàm nội bộ `rawPushCommand`.
-    /// - Đảm bảo kích thước được căn chỉnh 8-byte và ghi nhận vào command stream.
-    pub fn pushCommand(self: *MicroUI, cmd_type: c_int, size: c_int) [*c]c_microui.mu_Command {
-        const cmd: [*c]c_microui.mu_Command =
-            @ptrCast(@alignCast(&self.mu_context.*.command_list.items[@intCast(self.mu_context.*.command_list.idx)]));
-        const aligned_size = (size + 7) & ~@as(c_int, 7);
-        std.debug.assert(self.mu_context.*.command_list.idx + aligned_size < self.mu_context.*.command_list.items.len);
-        cmd.*.base.type = cmd_type;
-        cmd.*.base.size = aligned_size;
-        self.mu_context.*.command_list.idx += aligned_size;
-        return cmd;
-    }
-
-    /// Đẩy lệnh JUMP để chuyển tiếp luồng duyệt command list đến một vị trí đích.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Cấp phát một command kiểu `MU_COMMAND_JUMP` trong command buffer.
-    /// - Gán con trỏ đích `jump.dst = dst`.
-    pub fn pushJump(self: *MicroUI, dst: [*c]c_microui.mu_Command) [*c]c_microui.mu_Command {
-        const cmd = self.pushCommand(c_microui.MU_COMMAND_JUMP, @sizeOf(c_microui.mu_JumpCommand));
-        cmd.*.jump.dst = dst;
-        return cmd;
-    }
-
-    /// Duyệt lệnh vẽ tiếp theo trong command buffer (Iterator).
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Nếu `cmd.* == null`: bắt đầu từ đầu buffer (`command_list.items`).
-    /// - Nếu `cmd.* != null`: tịnh tiến con trỏ theo kích thước `cmd.base.size`.
-    /// - Duyệt qua và giải quyết các bước nhảy `MU_COMMAND_JUMP` bằng cách chuyển con trỏ tới `jump.dst`.
-    /// - Dừng lại và trả về `1` khi gặp lệnh vẽ hợp lệ (Rect, Text, Icon, Clip).
-    /// - Trả về `0` khi đã duyệt hết toàn bộ chuỗi lệnh tới cuối buffer.
-    pub fn nextCommand(self: *MicroUI, cmd: *[*c]c_microui.mu_Command) c_int {
-        const items_ptr: [*]u8 = &self.mu_context.*.command_list.items;
-        const end_ptr = items_ptr + @as(usize, @intCast(self.mu_context.*.command_list.idx));
-        if (cmd.* != null) {
-            const raw: [*]u8 = @ptrCast(cmd.*);
-            cmd.* = @ptrCast(@alignCast(raw + @as(usize, @intCast(cmd.*.*.base.size))));
-        } else {
-            cmd.* = @ptrCast(@alignCast(items_ptr));
-        }
-        while (@as([*]u8, @ptrCast(cmd.*)) != end_ptr) {
-            if (cmd.*.*.base.type != c_microui.MU_COMMAND_JUMP) {
-                return 1;
-            }
-            cmd.* = @ptrCast(@alignCast(cmd.*.*.jump.dst));
-        }
-        return 0;
-    }
 
     // =========================================================================
     // 4. LOW-LEVEL DRAWING PRIMITIVES
@@ -392,9 +519,7 @@ pub const MicroUI = struct {
     pub fn drawRect(self: *MicroUI, r: math.Rect, col: Color) void {
         const draw_rect = r.intersect(self.clip_stack.getValue());
         if (draw_rect.w > 0 and draw_rect.h > 0) {
-            const cmd = self.pushCommand(c_microui.MU_COMMAND_RECT, @sizeOf(c_microui.mu_RectCommand));
-            cmd.*.rect.rect = draw_rect.toMu();
-            cmd.*.rect.color = col.toMu();
+            self.pushRect(draw_rect, col);
         }
     }
 
@@ -433,10 +558,7 @@ pub const MicroUI = struct {
     pub fn drawIcon(self: *MicroUI, id: c_int, r: math.Rect, col: Color) void {
         const clipped = r.intersect(self.clip_stack.getValue());
         if (clipped.w > 0 and clipped.h > 0) {
-            const cmd = self.pushCommand(c_microui.MU_COMMAND_ICON, @sizeOf(c_microui.mu_IconCommand));
-            cmd.*.icon.id = id;
-            cmd.*.icon.rect = clipped.toMu();
-            cmd.*.icon.color = col.toMu();
+            pushIcon(self, id, clipped, col);
         }
     }
 
@@ -467,20 +589,11 @@ pub const MicroUI = struct {
             return;
         }
         if (clipped == c_microui.MU_CLIP_PART) {
-            self.setClip(self.clip_stack.getValue());
+            self.pushClip(self.clip_stack.getValue());
         }
-        const cmd = self.pushCommand(c_microui.MU_COMMAND_TEXT, @sizeOf(c_microui.mu_TextCommand) + @as(c_int, @intCast(text.len)));
-        const tmp: [*]u8 = @ptrCast(&cmd.*.text.str);
-        @memcpy(tmp[0..text.len], text);
-        tmp[text.len] = 0;
-        cmd.*.text.pos = .{
-            .x = pos.x,
-            .y = pos.y,
-        };
-        cmd.*.text.color = col.toMu();
-        cmd.*.text.font = font;
+        self.pushText(text, pos, col, font);
         if (clipped != 0) {
-            self.setClip(math.rect(0, 0, 0x1000000, 0x1000000));
+            self.pushClip(math.rect(0, 0, 0x1000000, 0x1000000));
         }
     }
 
@@ -564,24 +677,6 @@ pub const MicroUI = struct {
         return res;
     }
 
-    /// Tính ID từ dữ liệu và đẩy vào ID stack để tạo phân cấp định danh widget con.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Gọi `getId(data, size)`.
-    /// - Lưu ID vừa tính vào đỉnh mảng `id_stack.items` và tăng chỉ số stack.
-    pub fn pushId(self: *MicroUI, data: ?*const anyopaque, size: c_int) void {
-        const id = self.getId(data, size);
-        self.id_stack.push(id);
-    }
-
-    /// Rút định danh ID gần nhất ra khỏi ID stack.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Rút ID ở đỉnh ngăn xếp `id_stack` ra để khôi phục định danh của container hoặc widget cha.
-    pub fn popId(self: *MicroUI) void {
-        _ = self.id_stack.pop();
-    }
-
     /// Đặt trạng thái Focus (tiêu điểm bàn phím/chuột) cho widget có ID chỉ định.
     ///
     /// Thuật toán & Thiết kế:
@@ -612,8 +707,10 @@ pub const MicroUI = struct {
         while (i > 0) {
             i -= 1;
             const cnt = self.container_stack.items[@intCast(i)];
-            if (cnt == self.mu_context.*.hover_root) {
-                return true;
+            if (self.hover_root) |hr| {
+                if (cnt == hr) {
+                    return true;
+                }
             }
             if (cnt.*.head != null) {
                 break;
@@ -899,20 +996,21 @@ pub const MicroUI = struct {
     /// - Nếu không tìm thấy và có cờ `MU_OPT_CLOSED`: trả về `null`.
     /// - Cấp phát slot mới từ pool qua `poolInit`, xóa trắng dữ liệu struct `mu_Container`.
     /// - Thiết lập trạng thái `open = 1` và đưa lên lớp trên cùng qua `bringToFront`.
-    pub fn getContainer(self: *MicroUI, id: c_uint, opt: c_int) ?*c_microui.mu_Container {
+    pub fn getContainer(self: *MicroUI, id: c_uint, opt: c_int) ?*Container {
         const pool = &self.mu_context.*.container_pool;
         if (self.poolGet(pool, id)) |idx| {
             if (self.mu_context.*.containers[idx].open != 0 or ~opt & c_microui.MU_OPT_CLOSED != 0) {
                 self.poolUpdate(pool, idx);
             }
-            return &self.mu_context.*.containers[idx];
+            return &self.containers[idx];
         }
         if (opt & c_microui.MU_OPT_CLOSED != 0) {
             return null;
         }
         const idx = self.poolInit(pool, id);
-        const cnt = &self.mu_context.*.containers[idx];
-        @memset(@as([*]u8, @ptrCast(cnt))[0..@sizeOf(c_microui.mu_Container)], 0);
+        // const cnt = &self.mu_context.*.containers[idx];
+        const cnt = &self.containers[idx];
+        @memset(@as([*]u8, @ptrCast(cnt))[0..@sizeOf(Container)], 0);
         cnt.*.open = 1;
         self.bringToFront(cnt);
         return cnt;
@@ -923,7 +1021,7 @@ pub const MicroUI = struct {
     /// Thuật toán & Thiết kế:
     /// - Băm chuỗi tên thành ID qua `getId(name.ptr, name.len)`.
     /// - Gọi `getContainer(id, 0)` để lấy hoặc khởi tạo container.
-    pub fn getContainerByName(self: *MicroUI, name: [:0]const u8) ?*c_microui.mu_Container {
+    pub fn getContainerByName(self: *MicroUI, name: [:0]const u8) ?*Container {
         const id = self.getId(name.ptr, @intCast(name.len));
         return self.getContainer(id, 0);
     }
@@ -933,7 +1031,7 @@ pub const MicroUI = struct {
     /// Thuật toán & Thiết kế:
     /// - Kiểm tra điều kiện biên `container_stack.idx > 0`.
     /// - Trả về phần tử tại chỉ số `container_stack.idx - 1`.
-    pub fn getCurrentContainer(self: *MicroUI) *c_microui.mu_Container {
+    pub fn getCurrentContainer(self: *MicroUI) *Container {
         return self.container_stack.getValue();
     }
 
@@ -943,7 +1041,7 @@ pub const MicroUI = struct {
     /// - Nếu không có cờ `MU_OPT_NOSCROLL`, gọi `scrollbars()` để trừ diện tích hiển thị thanh cuộn.
     /// - Đẩy layout mới với vùng hiển thị đã trừ khoảng đệm `padding` và độ lệch cuộn `cnt.scroll`.
     /// - Cập nhật `cnt.body = tmp_body`.
-    pub fn pushContainerBody(self: *MicroUI, cnt: *c_microui.mu_Container, body: math.Rect, opt: c_int) void {
+    pub fn pushContainerBody(self: *MicroUI, cnt: *Container, body: math.Rect, opt: c_int) void {
         var tmp_body = body;
         if (~opt & c_microui.MU_OPT_NOSCROLL != 0) {
             self.scrollbars(cnt, &tmp_body);
@@ -974,7 +1072,7 @@ pub const MicroUI = struct {
     /// Thuật toán & Thiết kế:
     /// - Gán `zindex = last_zindex + 1` cho container.
     /// - Cập nhật chỉ số `last_zindex += 1`.
-    pub fn bringToFront(self: *MicroUI, cnt: *c_microui.mu_Container) void {
+    pub fn bringToFront(self: *MicroUI, cnt: *Container) void {
         cnt.*.zindex = self.last_zindex + 1;
         self.last_zindex += 1;
     }
@@ -1006,7 +1104,7 @@ pub const MicroUI = struct {
     /// - Nếu không cần cuộn: đặt độ cuộn của container về 0.
     pub fn scrollbar(
         self: *MicroUI,
-        cnt: *c_microui.mu_Container,
+        cnt: *Container,
         body: *math.Rect,
         cs: math.Vec2,
         axis: ScrollbarAxis,
@@ -1037,7 +1135,7 @@ pub const MicroUI = struct {
                     self.drawFrame(thumb, style_mod.COLOR_SCROLLTHUMB);
 
                     if (self.mouseOver(body.*)) {
-                        self.mu_context.*.scroll_target = cnt;
+                        self.scroll_target = cnt;
                     }
                 } else {
                     cnt.scroll.y = 0;
@@ -1066,7 +1164,7 @@ pub const MicroUI = struct {
                     self.drawFrame(thumb, style_mod.COLOR_SCROLLTHUMB);
 
                     if (self.mouseOver(body.*)) {
-                        self.mu_context.*.scroll_target = cnt;
+                        self.scroll_target = cnt;
                     }
                 } else {
                     cnt.scroll.x = 0;
@@ -1084,7 +1182,7 @@ pub const MicroUI = struct {
     /// - Nếu nội dung vượt quá chiều rộng: thu hẹp chiều cao `body.h -= scrollbar_size` cho thanh cuộn ngang.
     /// - Gọi hàm `scrollbar()` cho trục dọc và trục ngang.
     /// - Khôi phục vùng cắt qua `popClipRect()`.
-    pub fn scrollbars(self: *MicroUI, cnt: *c_microui.mu_Container, body: *math.Rect) void {
+    pub fn scrollbars(self: *MicroUI, cnt: *Container, body: *math.Rect) void {
         const style_ptr = self.getStyle();
         const sz = style_ptr.scrollbar_size;
         var content_size = math.Vec2.fromMu(cnt.*.content_size);
@@ -1114,14 +1212,14 @@ pub const MicroUI = struct {
     /// - Kiểm tra xem chuột có nằm trên container không và so sánh z-index với `next_hover_root`
     ///   để chọn root container nhận hover ưu tiên.
     /// - Đẩy vùng cắt bao phủ không gian tọa độ cực đại vào `clip_stack`.
-    pub fn beginRootContainer(self: *MicroUI, cnt: *c_microui.mu_Container) void {
+    pub fn beginRootContainer(self: *MicroUI, cnt: *Container) void {
         self.container_stack.push(cnt);
         self.root_list.push(cnt);
-        cnt.*.head = self.pushJump(null);
+        cnt.*.head = self.command_list.pushJump(null) catch unreachable;
         if (math.Rect.fromMu(cnt.rect).overlapsVec2(self.mouse_pos) and
-            (self.mu_context.*.next_hover_root == null or cnt.*.zindex > self.mu_context.*.next_hover_root.*.zindex))
+            (self.next_hover_root == null or cnt.*.zindex > self.next_hover_root.?.zindex))
         {
-            self.mu_context.*.next_hover_root = cnt;
+            self.next_hover_root = cnt;
         }
         self.clip_stack.push(math.rect(0, 0, 0x1000000, 0x1000000));
     }
@@ -1134,8 +1232,8 @@ pub const MicroUI = struct {
     /// - Rút clip rect và pop container khỏi stack.
     pub fn endRootContainer(self: *MicroUI) void {
         const cnt = self.getCurrentContainer();
-        cnt.*.tail = self.pushJump(null);
-        cnt.*.head.*.jump.dst = @ptrCast(&self.mu_context.*.command_list.items[@intCast(self.mu_context.*.command_list.idx)]);
+        cnt.*.tail = self.command_list.pushJump(null) catch unreachable;
+        cnt.*.head.?.jump.dst = self.command_list.getEnd();
         _ = self.clip_stack.pop();
         self.popContainer();
     }
@@ -1245,7 +1343,7 @@ pub const MicroUI = struct {
         // Đóng popup khi nhấn ra bên ngoài
         if (opt & c_microui.MU_OPT_POPUP != 0 and
             self.mouse_pressed != 0 and
-            self.mu_context.*.hover_root != cnt)
+            self.hover_root != cnt)
         {
             cnt.?.open = 0;
         }
@@ -1282,7 +1380,8 @@ pub const MicroUI = struct {
     /// - Đẩy container vào `container_stack` và thiết lập layout qua `pushContainerBody()`.
     /// - Đẩy vùng cắt của panel vào clip stack.
     pub fn beginPanelEx(self: *MicroUI, name: [:0]const u8, opt: c_int) void {
-        self.pushId(name.ptr, @intCast(name.len));
+        const id = self.getId(name.ptr, @intCast(name.len));
+        self.id_stack.push(id);
         const cnt = self.getContainer(self.mu_context.*.last_id, opt) orelse return;
         const tmp = self.layoutNext();
         cnt.*.rect = tmp.toMu();
@@ -1313,8 +1412,8 @@ pub const MicroUI = struct {
     /// - Đặt trạng thái `open = 1` và đưa popup lên lớp trên cùng thông qua `bringToFront()`.
     pub fn openPopup(self: *MicroUI, name: [:0]const u8) void {
         const cnt = self.getContainerByName(name) orelse return;
-        self.mu_context.*.hover_root = cnt;
-        self.mu_context.*.next_hover_root = cnt;
+        self.hover_root = cnt;
+        self.next_hover_root = cnt;
         cnt.*.rect = math.rect(self.mouse_pos.x, self.mouse_pos.y, 1, 1).toMu();
         cnt.*.open = 1;
         self.bringToFront(cnt);
@@ -1447,7 +1546,7 @@ pub const MicroUI = struct {
     /// - Rút ID của treenode khỏi ID stack qua `popId()`.
     pub fn endTreenode(self: *MicroUI) void {
         self.getLayout().*.indent -= self.getStyle().indent;
-        self.popId();
+        _ = self.id_stack.pop();
     }
 
     // =========================================================================
