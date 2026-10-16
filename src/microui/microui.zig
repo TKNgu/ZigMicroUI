@@ -170,18 +170,20 @@ pub const MicroUI = struct {
     //     return cmd;
     // }
 
-    /// Đẩy lệnh JUMP để chuyển tiếp luồng duyệt command list đến một vị trí đích.
-    ///
-    /// Thuật toán & Thiết kế:
-    /// - Cấp phát một command kiểu `MU_COMMAND_JUMP` trong command buffer.
-    /// - Gán con trỏ đích `jump.dst = dst`.
-    pub fn pushJump(self: *MicroUI, dst: [*c]c_microui.mu_Command) [*c]c_microui.mu_Command {
-        // _ = self.command_list.pushJump(dst) catch unreachable;
-
-        const cmd = self.pushCommand(c_microui.MU_COMMAND_JUMP, @sizeOf(c_microui.mu_JumpCommand));
-        cmd.*.jump.dst = dst;
-        return cmd;
-    }
+    // /// Đẩy lệnh JUMP để chuyển tiếp luồng duyệt command list đến một vị trí đích.
+    // ///
+    // /// Thuật toán & Thiết kế:
+    // /// - Cấp phát một command kiểu `MU_COMMAND_JUMP` trong command buffer.
+    // /// - Gán con trỏ đích `jump.dst = dst`.
+    // pub fn pushJump(self: *MicroUI, dst: [*c]c_microui.mu_Command) [*c]c_microui.mu_Command {
+    //     self.command_list.pushJump(dst) catch unreachable;
+    //
+    //     // _ = self.command_list.pushJump(dst) catch unreachable;
+    //
+    //     // const cmd = self.pushCommand(c_microui.MU_COMMAND_JUMP, @sizeOf(c_microui.mu_JumpCommand));
+    //     // cmd.*.jump.dst = dst;
+    //     // return cmd;
+    // }
 
     pub fn pushRect(self: *MicroUI, draw_rect: math.Rect, color: Color) void {
         // const cmd = self.pushCommand(c_microui.MU_COMMAND_RECT, @sizeOf(c_microui.mu_RectCommand));
@@ -218,24 +220,24 @@ pub const MicroUI = struct {
     ) void {
         _ = self.command_list.pushText(text, pos, color, font) catch unreachable;
 
-        // const cmd = self.pushCommand(
-        //     c_microui.MU_COMMAND_TEXT,
-        //     @sizeOf(c_microui.mu_TextCommand) + @as(c_int, @intCast(text.len)),
-        // );
-        // const cmd = self.command_list.pushCommand(command_mod.Type.text);
-        const cmd = self.command_list.pushCommandText(text.len) catch unreachable;
-
-        // const tmp: [*]u8 = @ptrCast(&cmd.*.text.str);
-        const tmp: [*]u8 = @ptrCast(&cmd.*.text.text);
-        @memcpy(tmp[0..text.len], text);
-        tmp[text.len] = 0;
-        cmd.*.text.pos = .{
-            .x = pos.x,
-            .y = pos.y,
-        };
-        // cmd.*.text.color = color.toMu();
-        cmd.*.text.color = color;
-        cmd.*.text.font = font;
+        // // const cmd = self.pushCommand(
+        // //     c_microui.MU_COMMAND_TEXT,
+        // //     @sizeOf(c_microui.mu_TextCommand) + @as(c_int, @intCast(text.len)),
+        // // );
+        // // const cmd = self.command_list.pushCommand(command_mod.Type.text);
+        // const cmd = self.command_list.pushCommandText(text.len) catch unreachable;
+        //
+        // // const tmp: [*]u8 = @ptrCast(&cmd.*.text.str);
+        // const tmp: [*]u8 = @ptrCast(&cmd.*.text.text);
+        // @memcpy(tmp[0..text.len], text);
+        // tmp[text.len] = 0;
+        // cmd.*.text.pos = .{
+        //     .x = pos.x,
+        //     .y = pos.y,
+        // };
+        // // cmd.*.text.color = color.toMu();
+        // cmd.*.text.color = color;
+        // cmd.*.text.font = font;
     }
 
     pub fn getBegin(self: *MicroUI) *command_mod.Command {
@@ -261,8 +263,11 @@ pub const MicroUI = struct {
     /// - Duyệt qua và giải quyết các bước nhảy `MU_COMMAND_JUMP` bằng cách chuyển con trỏ tới `jump.dst`.
     /// - Dừng lại và trả về `1` khi gặp lệnh vẽ hợp lệ (Rect, Text, Icon, Clip).
     /// - Trả về `0` khi đã duyệt hết toàn bộ chuỗi lệnh tới cuối buffer.
-    pub fn nextCommand(self: *MicroUI, cmd: *?*command_mod.Command) c_int {
+    pub fn nextCommand(self: *MicroUI, cmd: *?*command_mod.Command) bool {
+        return self.command_list.getNextCommand(cmd);
+
         // const items_ptr: [*]u8 = &self.mu_context.*.command_list.items;
+        //
         // const end_ptr = items_ptr + @as(usize, @intCast(self.mu_context.*.command_list.idx));
         // if (cmd.* != null) {
         //     const raw: [*]u8 = @ptrCast(cmd.*);
@@ -278,21 +283,36 @@ pub const MicroUI = struct {
         // }
         // return 0;
 
-        if (cmd.* == null) {
-            cmd.* = self.command_list.getBegin();
-        } else {
-            const tmp = cmd.*.?;
-            cmd.* = tmp.base.next;
-        }
-
-        const end_ptr = self.command_list.getEnd();
-        while (cmd.* != end_ptr) {
-            if (cmd.*.?.base.type != command_mod.Type.jump) {
-                return 1;
-            }
-            cmd.* = cmd.*.?.jump.dst;
-        }
-        return 0;
+        // if (cmd.* == null) {
+        //     cmd.* = self.command_list.getBegin();
+        // } else {
+        //     var index: usize = 0;
+        //     while (index < self.command_list.commands.items.len) : (index += 1) {
+        //         if (cmd.* == self.command_list.items[index]) {
+        //             break;
+        //         }
+        //     }
+        //     if (index == self.command_list.items.len) {
+        //         return false;
+        //     }
+        //     cmd.* = self.command_list.items[index];
+        // }
+        //
+        // // if (cmd.* == null) {
+        // //     cmd.* = self.command_list.getBegin();
+        // // } else {
+        // //     const tmp = cmd.*.?;
+        // //     cmd.* = tmp.base.next;
+        // // }
+        //
+        // const end_ptr = self.command_list.getEnd();
+        // while (cmd.* != end_ptr) {
+        //     if (cmd.*.?.base.type != command_mod.Type.jump) {
+        //         return 1;
+        //     }
+        //     cmd.* = cmd.*.?.jump.dst;
+        // }
+        // return 0;
     }
 
     /// Bắt đầu một frame giao diện mới, chuẩn bị danh sách lệnh và cập nhật input.
@@ -367,26 +387,63 @@ pub const MicroUI = struct {
         self.last_mouse_pos = self.mouse_pos;
 
         const root_items = self.root_list.getSlice();
-        const n = root_items.len;
-        std.mem.sort(*Container, root_items, {}, compareContainersByZIndex);
+        // const tmp = root_items[1];
+        // root_items[1] = root_items[2];
+        // root_items[2] = tmp;
 
-        for (root_items, 0..) |cnt, i| {
-            if (i == 0) {
-                const cmd = self.getBegin();
-                cmd.*.jump.dst = cnt.*.head.?.base.next.?;
-                // cmd.*.jump.dst = @ptrCast(
-                //     @as([*]u8, @ptrCast(cnt.*.head)) + @sizeOf(c_microui.mu_JumpCommand),
-                // );
-            } else {
-                const prev = root_items[i - 1];
-                // prev.*.tail.*.jump.dst = @ptrCast(@as([*]u8, @ptrCast(cnt.*.head)) + @sizeOf(c_microui.mu_JumpCommand));
-                prev.*.tail.?.jump.dst = cnt.*.head.?.base.next.?;
-            }
-            if (i == n - 1) {
-                // cnt.*.tail.*.jump.dst = self.getEnd();
-                cnt.*.tail.?.jump.dst = self.command_list.getEnd().?;
-            }
-        }
+        // std.mem.sort(*Container, root_items, {}, compareContainersByZIndex);
+
+        const cnt_style = root_items[0];
+        const cnt_log = root_items[1];
+        const cnt_view = root_items[2];
+
+        self.command_list.begin.?.jump.dst = cnt_log.*.head.?.base.next;
+        cnt_log.*.tail.?.jump.dst = cnt_view.*.head.?.base.next;
+        cnt_view.*.tail.?.jump.dst = cnt_style.*.head.?.base.next;
+        cnt_style.*.tail.?.jump.dst = self.command_list.getEnd();
+
+        // self.command_list.begin.?.jump.dst = cnt_style.*.head.?.base.next;
+        // cnt_style.*.tail.?.jump.dst = self.command_list.getEnd();
+        //
+        // self.command_list.begin.?.jump.dst = cnt_log.*.head.?.base.next;
+        // cnt_log.*.tail.?.jump.dst = self.command_list.getEnd();
+        //
+        // self.command_list.begin.?.jump.dst = cnt_view.*.head.?.base.next;
+        // cnt_view.*.tail.?.jump.dst = self.command_list.getEnd();
+
+        // const cnt2 = root_items[1];
+        // cnt1.*.tail.?.jump.dst = cnt2.*.head.?.base.next;
+        //
+        // const cnt3 = root_items[2];
+        // cnt2.*.tail.?.jump.dst = cnt3.*.head.?.base.next;
+        //
+        // cnt3.*.tail.?.jump.dst = self.command_list.getEnd();
+
+        // const n = root_items.len;
+
+        std.debug.print("************\n", .{});
+        // for (root_items, 0..) |cnt, i| {
+
+        // if (i == 0) {
+        //     std.debug.print("cnt {*}\n", .{cnt});
+        //     std.debug.print("cnt.head {*}\n", .{cnt.*.head.?.base.next});
+        //     const cmd = self.getBegin();
+        //     cmd.*.jump.dst = cnt.*.head.?.base.next;
+        //     std.debug.print("Begin {*}\n", .{self.command_list.begin.?.jump.dst});
+        //     // cmd.*.jump.dst = @ptrCast(
+        //     //     @as([*]u8, @ptrCast(cnt.*.head)) + @sizeOf(c_microui.mu_JumpCommand),
+        //     // );
+        // }
+        // else {
+        //     const prev = root_items[i - 1];
+        //     // prev.*.tail.*.jump.dst = @ptrCast(@as([*]u8, @ptrCast(cnt.*.head)) + @sizeOf(c_microui.mu_JumpCommand));
+        //     prev.*.tail.?.jump.dst = cnt.*.head.?.base.next;
+        // }
+        // if (i == n - 1) {
+        //     // cnt.*.tail.*.jump.dst = self.getEnd();
+        //     cnt.*.tail.?.jump.dst = self.command_list.getEnd();
+        // }
+        // }
     }
 
     // =========================================================================

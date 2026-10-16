@@ -190,48 +190,59 @@ pub fn main(init: std.process.Init) !void {
             continue;
         }
 
+        var count: usize = 0;
         var cmd: ?*command_mod.Command = null;
-        while (microui.nextCommand(&cmd) != 0) {
-            const cmd_type = cmd.?.type;
-            if (cmd_type == command_mod.Type.text) {
-                const str_ptr: [*:0]const u8 = @ptrCast(&(cmd.?.text.text[0]));
-                const s = std.mem.span(str_ptr);
-                const rect = cmd.?.text.pos;
-                render_engine.drawText(s, math.vec.Vec2(f32).init(
-                    @as(f32, @floatFromInt(rect.x)),
-                    @as(f32, @floatFromInt(rect.y)),
-                )) catch {};
-            } else if (cmd_type == command_mod.Type.rect) {
-                const rect = cmd.?.rect;
-                const color = cmd.?.rect.color;
-                render_engine.fillRect(math.rect.Rect2(f32).init(
-                    @as(f32, @floatFromInt(rect.rect.x)),
-                    @as(f32, @floatFromInt(rect.rect.y)),
-                    @as(f32, @floatFromInt(rect.rect.w)),
-                    @as(f32, @floatFromInt(rect.rect.h)),
-                ), .{
-                    .r = color.r,
-                    .g = color.g,
-                    .b = color.b,
-                    .a = color.a,
-                }) catch {};
-            } else if (cmd_type == command_mod.Type.icon) {
-                const rect = cmd.?.icon.rect;
-                const id: usize = @intCast(cmd.?.icon.id);
-                render_engine.drawIcon(id, math.rect.Rect2(f32).init(
-                    @as(f32, @floatFromInt(rect.x)),
-                    @as(f32, @floatFromInt(rect.y)),
-                    @as(f32, @floatFromInt(rect.w)),
-                    @as(f32, @floatFromInt(rect.h)),
-                )) catch {};
-            } else if (cmd_type == command_mod.Type.clip) {
-                const rect = cmd.?.clip.rect;
-                _ = z_render.clip(math.rect.Rect2(f32).init(
-                    @as(f32, @floatFromInt(rect.x)),
-                    @as(f32, @floatFromInt(rect.y)),
-                    @as(f32, @floatFromInt(rect.w)),
-                    @as(f32, @floatFromInt(rect.h)),
-                ));
+        while (microui.nextCommand(&cmd)) {
+            if (cmd) |c| {
+                count += 1;
+                switch (c.*.type) {
+                    .text => {
+                        const str_ptr: [*:0]const u8 = @ptrCast(&(cmd.?.text.text[0]));
+                        const s = std.mem.span(str_ptr);
+                        const rect = cmd.?.text.pos;
+                        render_engine.drawText(s, math.vec.Vec2(f32).init(
+                            @as(f32, @floatFromInt(rect.x)),
+                            @as(f32, @floatFromInt(rect.y)),
+                        )) catch {};
+                    },
+                    .rect => {
+                        const rect = cmd.?.rect;
+                        const color = cmd.?.rect.color;
+                        render_engine.fillRect(math.rect.Rect2(f32).init(
+                            @as(f32, @floatFromInt(rect.rect.x)),
+                            @as(f32, @floatFromInt(rect.rect.y)),
+                            @as(f32, @floatFromInt(rect.rect.w)),
+                            @as(f32, @floatFromInt(rect.rect.h)),
+                        ), .{
+                            .r = color.r,
+                            .g = color.g,
+                            .b = color.b,
+                            .a = color.a,
+                        }) catch {};
+                    },
+                    .icon => {
+                        const rect = cmd.?.icon.rect;
+                        const id: usize = @intCast(cmd.?.icon.id);
+                        render_engine.drawIcon(id, math.rect.Rect2(f32).init(
+                            @as(f32, @floatFromInt(rect.x)),
+                            @as(f32, @floatFromInt(rect.y)),
+                            @as(f32, @floatFromInt(rect.w)),
+                            @as(f32, @floatFromInt(rect.h)),
+                        )) catch {};
+                    },
+                    .clip => {
+                        const rect = cmd.?.clip.rect;
+                        _ = z_render.clip(math.rect.Rect2(f32).init(
+                            @as(f32, @floatFromInt(rect.x)),
+                            @as(f32, @floatFromInt(rect.y)),
+                            @as(f32, @floatFromInt(rect.w)),
+                            @as(f32, @floatFromInt(rect.h)),
+                        ));
+                    },
+                    else => {
+                        std.debug.print("Else\n", .{});
+                    },
+                }
             }
         }
 
