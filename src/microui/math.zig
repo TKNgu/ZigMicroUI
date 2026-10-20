@@ -9,13 +9,13 @@ pub const Vec2 = extern struct {
     y: i32 = 0,
 
     /// Khởi tạo Vec2 với toạ độ x, y.
-    pub fn init(x: i32, y: i32) Vec2 {
+    pub inline fn init(x: i32, y: i32) Vec2 {
         return .{ .x = x, .y = y };
     }
 };
 
 /// Hàm tiện ích tạo nhanh Vec2.
-pub fn vec2(x: i32, y: i32) Vec2 {
+pub inline fn vec2(x: i32, y: i32) Vec2 {
     return Vec2.init(x, y);
 }
 
@@ -27,12 +27,12 @@ pub const Rect = extern struct {
     h: i32 = 0,
 
     /// Khởi tạo Rect với toạ độ và kích thước cụ thể.
-    pub fn init(x: i32, y: i32, w: i32, h: i32) Rect {
+    pub inline fn init(x: i32, y: i32, w: i32, h: i32) Rect {
         return .{ .x = x, .y = y, .w = w, .h = h };
     }
 
     /// Mở rộng hình chữ nhật về cả 4 phía một khoảng `n` pixel.
-    pub fn expand(self: Rect, n: i32) Rect {
+    pub inline fn expand(self: Rect, n: i32) Rect {
         return .{
             .x = self.x - n,
             .y = self.y - n,
@@ -42,7 +42,7 @@ pub const Rect = extern struct {
     }
 
     /// Tính phần giao nhau giữa 2 hình chữ nhật (dùng trong tính toán vùng cắt clip).
-    pub fn intersect(r1: Rect, r2: Rect) Rect {
+    pub inline fn intersect(r1: Rect, r2: Rect) Rect {
         const x1 = @max(r1.x, r2.x);
         const y1 = @max(r1.y, r2.y);
         const x2 = @min(r1.x + r1.w, r2.x + r2.w);
@@ -55,12 +55,13 @@ pub const Rect = extern struct {
     }
 
     /// Kiểm tra toạ độ điểm `p` có nằm bên trong hình chữ nhật hay không.
-    pub fn overlapsVec2(self: Rect, p: Vec2) bool {
+    pub inline fn contains(self: Rect, p: Vec2) bool {
         return p.x >= self.x and p.x < self.x + self.w and p.y >= self.y and p.y < self.y + self.h;
     }
+    pub const overlapsVec2 = contains;
 };
 
 /// Hàm tiện ích tạo nhanh Rect.
-pub fn rect(x: i32, y: i32, w: i32, h: i32) Rect {
+pub inline fn rect(x: i32, y: i32, w: i32, h: i32) Rect {
     return Rect.init(x, y, w, h);
 }

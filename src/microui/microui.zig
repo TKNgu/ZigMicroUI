@@ -16,182 +16,63 @@ pub const Vec2 = math.Vec2;
 const style_mod = @import("style.zig");
 pub const style = style_mod;
 const command_mod = @import("command.zig");
+const container_mod = @import("container.zig");
+const layout_mod = @import("layout.zig");
+const Layout = layout_mod.Layout;
+const pool_mod = @import("pool.zig");
+const Pool = pool_mod.Pool;
 
-// =============================================================================
-// 1. CONSTANTS, ENUMS & COMPATIBILITY ALIASES
-// =============================================================================
-
-pub const Id = u32;
+const types_mod = @import("types.zig");
+pub const types = types_mod;
+pub const Id = types_mod.Id;
 pub const Font = style_mod.Font;
-pub const MAX_WIDTHS: usize = 16;
-pub const MAX_FMT: usize = 127;
-pub const SLIDER_FMT = "%.2f";
-
-/// Cắt khung hiển thị (Clipping).
-pub const Clip = struct {
-    pub const PART: i32 = 1;
-    pub const ALL: i32 = 2;
-};
-
-/// Tùy chọn cấu hình cho Cửa sổ (Window), Bảng (Panel) và Widget.
-pub const Opt = struct {
-    pub const ALIGNCENTER: i32 = (1 << 0);
-    pub const ALIGNRIGHT: i32 = (1 << 1);
-    pub const NOINTERACT: i32 = (1 << 2);
-    pub const NOFRAME: i32 = (1 << 3);
-    pub const NORESIZE: i32 = (1 << 4);
-    pub const NOSCROLL: i32 = (1 << 5);
-    pub const NOCLOSE: i32 = (1 << 6);
-    pub const NOTITLE: i32 = (1 << 7);
-    pub const HOLDFOCUS: i32 = (1 << 8);
-    pub const AUTOSIZE: i32 = (1 << 9);
-    pub const POPUP: i32 = (1 << 10);
-    pub const CLOSED: i32 = (1 << 11);
-    pub const EXPANDED: i32 = (1 << 12);
-};
-
-/// Kết quả phản hồi từ tương tác của người dùng trên widget.
-pub const Res = struct {
-    pub const ACTIVE: i32 = (1 << 0);
-    pub const SUBMIT: i32 = (1 << 1);
-    pub const CHANGE: i32 = (1 << 2);
-};
-
-/// Mã các nút chuột.
-pub const Mouse = struct {
-    pub const LEFT: i32 = (1 << 0);
-    pub const RIGHT: i32 = (1 << 1);
-    pub const MIDDLE: i32 = (1 << 2);
-};
-
-/// Mã các phím bổ trợ và phím điều khiển bàn phím.
-pub const Key = struct {
-    pub const SHIFT: i32 = (1 << 0);
-    pub const CTRL: i32 = (1 << 1);
-    pub const ALT: i32 = (1 << 2);
-    pub const BACKSPACE: i32 = (1 << 3);
-    pub const RETURN: i32 = (1 << 4);
-};
-
-/// Định danh các biểu tượng (Icon) chuẩn.
-pub const Icon = struct {
-    pub const CLOSE: i32 = 1;
-    pub const CHECK: i32 = 2;
-    pub const COLLAPSED: i32 = 3;
-    pub const EXPANDED: i32 = 4;
-};
+pub const Opt = types_mod.Opt;
+pub const Res = types_mod.Res;
+pub const Mouse = types_mod.Mouse;
+pub const Key = types_mod.Key;
+pub const Icon = types_mod.Icon;
+pub const Clip = types_mod.Clip;
+pub const MAX_FMT = types_mod.MAX_FMT;
+pub const SLIDER_FMT = types_mod.SLIDER_FMT;
 
 // Aliases tương thích ngược với API gốc
-pub const MU_CLIP_PART = Clip.PART;
-pub const MU_CLIP_ALL = Clip.ALL;
+pub const MU_CLIP_PART = types_mod.MU_CLIP_PART;
+pub const MU_CLIP_ALL = types_mod.MU_CLIP_ALL;
+pub const MU_OPT_ALIGNCENTER = types_mod.MU_OPT_ALIGNCENTER;
+pub const MU_OPT_ALIGNRIGHT = types_mod.MU_OPT_ALIGNRIGHT;
+pub const MU_OPT_NOINTERACT = types_mod.MU_OPT_NOINTERACT;
+pub const MU_OPT_NOFRAME = types_mod.MU_OPT_NOFRAME;
+pub const MU_OPT_NORESIZE = types_mod.MU_OPT_NORESIZE;
+pub const MU_OPT_NOSCROLL = types_mod.MU_OPT_NOSCROLL;
+pub const MU_OPT_NOCLOSE = types_mod.MU_OPT_NOCLOSE;
+pub const MU_OPT_NOTITLE = types_mod.MU_OPT_NOTITLE;
+pub const MU_OPT_HOLDFOCUS = types_mod.MU_OPT_HOLDFOCUS;
+pub const MU_OPT_AUTOSIZE = types_mod.MU_OPT_AUTOSIZE;
+pub const MU_OPT_POPUP = types_mod.MU_OPT_POPUP;
+pub const MU_OPT_CLOSED = types_mod.MU_OPT_CLOSED;
+pub const MU_OPT_EXPANDED = types_mod.MU_OPT_EXPANDED;
+pub const MU_RES_ACTIVE = types_mod.MU_RES_ACTIVE;
+pub const MU_RES_SUBMIT = types_mod.MU_RES_SUBMIT;
+pub const MU_RES_CHANGE = types_mod.MU_RES_CHANGE;
+pub const MU_MOUSE_LEFT = types_mod.MU_MOUSE_LEFT;
+pub const MU_MOUSE_RIGHT = types_mod.MU_MOUSE_RIGHT;
+pub const MU_MOUSE_MIDDLE = types_mod.MU_MOUSE_MIDDLE;
+pub const MU_KEY_SHIFT = types_mod.MU_KEY_SHIFT;
+pub const MU_KEY_CTRL = types_mod.MU_KEY_CTRL;
+pub const MU_KEY_ALT = types_mod.MU_KEY_ALT;
+pub const MU_KEY_BACKSPACE = types_mod.MU_KEY_BACKSPACE;
+pub const MU_KEY_RETURN = types_mod.MU_KEY_RETURN;
+pub const MU_ICON_CLOSE = types_mod.MU_ICON_CLOSE;
+pub const MU_ICON_CHECK = types_mod.MU_ICON_CHECK;
+pub const MU_ICON_COLLAPSED = types_mod.MU_ICON_COLLAPSED;
+pub const MU_ICON_EXPANDED = types_mod.MU_ICON_EXPANDED;
+pub const MU_MAX_FMT = types_mod.MU_MAX_FMT;
+pub const MU_SLIDER_FMT = types_mod.MU_SLIDER_FMT;
 
-pub const MU_OPT_ALIGNCENTER = Opt.ALIGNCENTER;
-pub const MU_OPT_ALIGNRIGHT = Opt.ALIGNRIGHT;
-pub const MU_OPT_NOINTERACT = Opt.NOINTERACT;
-pub const MU_OPT_NOFRAME = Opt.NOFRAME;
-pub const MU_OPT_NORESIZE = Opt.NORESIZE;
-pub const MU_OPT_NOSCROLL = Opt.NOSCROLL;
-pub const MU_OPT_NOCLOSE = Opt.NOCLOSE;
-pub const MU_OPT_NOTITLE = Opt.NOTITLE;
-pub const MU_OPT_HOLDFOCUS = Opt.HOLDFOCUS;
-pub const MU_OPT_AUTOSIZE = Opt.AUTOSIZE;
-pub const MU_OPT_POPUP = Opt.POPUP;
-pub const MU_OPT_CLOSED = Opt.CLOSED;
-pub const MU_OPT_EXPANDED = Opt.EXPANDED;
-
-pub const MU_RES_ACTIVE = Res.ACTIVE;
-pub const MU_RES_SUBMIT = Res.SUBMIT;
-pub const MU_RES_CHANGE = Res.CHANGE;
-
-pub const MU_MOUSE_LEFT = Mouse.LEFT;
-pub const MU_MOUSE_RIGHT = Mouse.RIGHT;
-pub const MU_MOUSE_MIDDLE = Mouse.MIDDLE;
-
-pub const MU_KEY_SHIFT = Key.SHIFT;
-pub const MU_KEY_CTRL = Key.CTRL;
-pub const MU_KEY_ALT = Key.ALT;
-pub const MU_KEY_BACKSPACE = Key.BACKSPACE;
-pub const MU_KEY_RETURN = Key.RETURN;
-
-pub const MU_ICON_CLOSE = Icon.CLOSE;
-pub const MU_ICON_CHECK = Icon.CHECK;
-pub const MU_ICON_COLLAPSED = Icon.COLLAPSED;
-pub const MU_ICON_EXPANDED = Icon.EXPANDED;
-
-pub const MU_MAX_WIDTHS = MAX_WIDTHS;
-pub const MU_MAX_FMT = MAX_FMT;
-pub const MU_SLIDER_FMT = SLIDER_FMT;
-
-// =============================================================================
-// 2. CORE LAYOUT & CONTAINER TYPES
-// =============================================================================
-
-/// Trạng thái bố cục của một hàng hoặc vùng chứa hiện tại.
-pub const Layout = struct {
-    body: math.Rect = .{},
-    next: math.Rect = .{},
-    position: math.Vec2 = .{},
-    size: math.Vec2 = .{},
-    max: math.Vec2 = .{},
-    widths: [MAX_WIDTHS]i32 = [_]i32{0} ** MAX_WIDTHS,
-    items: i32 = 0,
-    item_index: i32 = 0,
-    next_row: i32 = 0,
-    next_type: i32 = 0,
-    indent: i32 = 0,
-};
-
-/// Phần tử lưu vết trong pool lưu trữ trạng thái tồn tại qua các frame.
-pub const PoolItem = struct {
-    id: Id = 0,
-    last_update: i32 = 0,
-};
-
-/// Vùng chứa (Cửa sổ, Panel, Popup) quản lý chuỗi lệnh vẽ và vị trí cuộn.
-pub const Container = struct {
-    head: ?*command_mod.Command = null,
-    tail: ?*command_mod.Command = null,
-    rect: math.Rect = .{},
-    body: math.Rect = .{},
-    content_size: math.Vec2 = .{},
-    scroll: math.Vec2 = .{},
-    zindex: i32 = 0,
-    open: i32 = 0,
-};
-
-// =============================================================================
-// 3. TEXT & NUMERIC FORMATTING HELPERS
-// =============================================================================
-
-/// Định dạng số thực (f32) thành chuỗi kết thúc bằng null theo định dạng printf (ví dụ: "%.2f", "%.0f").
-fn formatReal(buf: []u8, fmt: [*c]const u8, val: f32) [:0]const u8 {
-    if (buf.len == 0) return "";
-    const span = if (fmt != null) std.mem.span(fmt) else "";
-    var precision: ?usize = null;
-    if (std.mem.indexOfScalar(u8, span, '.')) |dot_idx| {
-        var p: usize = 0;
-        var i = dot_idx + 1;
-        while (i < span.len and std.ascii.isDigit(span[i])) : (i += 1) {
-            p = p * 10 + (span[i] - '0');
-        }
-        if (i > dot_idx + 1) {
-            precision = p;
-        }
-    }
-    if (precision) |prec| {
-        return switch (prec) {
-            0 => std.fmt.bufPrintSentinel(buf, "{d:.0}", .{val}, 0) catch "",
-            1 => std.fmt.bufPrintSentinel(buf, "{d:.1}", .{val}, 0) catch "",
-            2 => std.fmt.bufPrintSentinel(buf, "{d:.2}", .{val}, 0) catch "",
-            3 => std.fmt.bufPrintSentinel(buf, "{d:.3}", .{val}, 0) catch "",
-            4 => std.fmt.bufPrintSentinel(buf, "{d:.4}", .{val}, 0) catch "",
-            5 => std.fmt.bufPrintSentinel(buf, "{d:.5}", .{val}, 0) catch "",
-            else => std.fmt.bufPrintSentinel(buf, "{d:.2}", .{val}, 0) catch "",
-        };
-    } else {
-        return std.fmt.bufPrintSentinel(buf, "{d}", .{val}, 0) catch "";
-    }
-}
+const format_mod = @import("format.zig");
+pub const formatReal = format_mod.formatReal;
+const mouse_mod = @import("mouse_input.zig");
+pub const MouseInput = mouse_mod.MouseInput;
 
 // =============================================================================
 // 4. MICRON UI CONTEXT STRUCT
@@ -233,25 +114,17 @@ pub const MicroUI = struct {
     last_id: Id = 0,
     last_rect: math.Rect = .{},
 
-    id_stack: stack.BuildStack(Id, 32) = .{},
-    clip_stack: stack.BuildStack(math.Rect, 32) = .{},
-    layout_stack: stack.BuildStack(Layout, 16) = .{},
-    container_stack: stack.BuildStack(*Container, 32) = .{},
-    root_list: stack.BuildStack(*Container, 32) = .{},
-    hover_root: ?*Container = null,
-    next_hover_root: ?*Container = null,
-    scroll_target: ?*Container = null,
+    id_stack: stack.Stack(Id, 32) = .{},
+    clip_stack: stack.Stack(math.Rect, 32) = .{},
 
-    container_pool: [48]PoolItem = [_]PoolItem{.{}} ** 48,
-    containers: [48]Container = [_]Container{.{}} ** 48,
-    treenode_pool: [48]PoolItem = [_]PoolItem{.{}} ** 48,
+    layout_manager: layout_mod.LayoutManager = .{},
 
-    mouse_pos: math.Vec2 = .{},
-    last_mouse_pos: math.Vec2 = .{},
-    mouse_delta: math.Vec2 = .{},
-    scroll_delta: math.Vec2 = .{},
-    mouse_down: i32 = 0,
-    mouse_pressed: i32 = 0,
+    container_manager: container_mod.ContainerManager = .{},
+
+    treenode_pool: Pool(48) = .{},
+
+    mouse_input: MouseInput = .{},
+
     key_down: i32 = 0,
     key_pressed: i32 = 0,
     input_text: [32:0]u8 = [_:0]u8{0} ** 32,
@@ -259,27 +132,115 @@ pub const MicroUI = struct {
     number_edit: Id = 0,
     number_edit_buf: [MAX_FMT:0]u8 = [_:0]u8{0} ** MAX_FMT,
 
-    last_zindex: i32 = 0,
     updated_focus: bool = false,
     frame: i32 = 0,
 
     command_list: command_mod.CommandList = undefined,
+
+    // Container
+    //
+    /// Lấy container hiện tại đang được xử lý ở đỉnh stack.
+    pub inline fn getCurrentContainer(self: *MicroUI) *container_mod.Container {
+        return self.container_manager.getCurrent();
+    }
+
+    /// Bắt đầu một root container (cửa sổ độc lập hoặc popup trên cùng).
+    pub fn beginRootContainer(self: *MicroUI, cnt: *container_mod.Container) !void {
+        self.container_manager.pushRoot(cnt);
+        cnt.*.head = try self.command_list.pushJump(null);
+        if (self.mouse_input.overlaps(cnt.rect)) {
+            self.container_manager.setNextHoverRoot(cnt);
+        }
+        self.clip_stack.push(math.rect(0, 0, 0x1000000, 0x1000000));
+    }
+
+    /// Đóng và đưa container hiện tại ra khỏi ngăn xếp xử lý.
+    pub fn popContainer(self: *MicroUI) void {
+        const cnt = self.container_manager.getCurrent();
+        const layout = self.getLayout();
+        cnt.*.content_size.x = layout.*.max.x - layout.*.body.x;
+        cnt.*.content_size.y = layout.*.max.y - layout.*.body.y;
+        _ = self.container_manager.pop();
+        _ = self.layout_manager.pop();
+        _ = self.id_stack.pop();
+    }
+
+    /// Bắt đầu một bảng con kèm tùy chọn `Opt`.
+    pub fn beginPanelEx(self: *MicroUI, name: [:0]const u8, opt: i32) !void {
+        const id = self.getId(name.ptr, name.len);
+        self.id_stack.push(id);
+        const cnt = self.getContainer(self.last_id, opt) orelse return;
+        const tmp = self.layoutNext();
+        cnt.*.rect = tmp;
+        if (~opt & Opt.NOFRAME != 0) {
+            try self.drawFrame(tmp, style_mod.COLOR_PANELBG);
+        }
+        self.container_manager.push(cnt);
+        try self.pushContainerBody(cnt, tmp, opt);
+        self.pushClipRect(cnt.*.body);
+    }
+
+    /// Kiểm tra con trỏ chuột có đang lơ lửng (hover) trên hình chữ nhật `r` hay không.
+    pub inline fn mouseOver(self: *MicroUI, r: math.Rect) bool {
+        if (!self.mouse_input.overlaps(r) or
+            !self.mouse_input.overlaps(self.clip_stack.top()))
+        {
+            return false;
+        }
+        return self.container_manager.isActiveContainer();
+    }
+
+    /// Bắt đầu một frame giao diện mới, chuẩn bị danh sách lệnh và cập nhật input.
+    pub fn begin(self: *MicroUI) void {
+        self.command_list.clear();
+        self.container_manager.begin();
+        self.mouse_input.updateDelta();
+        self.frame += 1;
+    }
+
+    /// Kết thúc frame giao diện hiện tại và liên kết chuỗi lệnh render của các root container theo Z-Index.
+    pub fn end(self: *MicroUI) void {
+        std.debug.assert(self.id_stack.isEmpty());
+        std.debug.assert(self.clip_stack.isEmpty());
+        std.debug.assert(self.layout_manager.isEmpty());
+
+        self.container_manager.updateScroll(self.mouse_input.scroll_delta);
+        if (!self.updated_focus) {
+            self.focus = 0;
+        }
+        self.updated_focus = false;
+        if (self.mouse_input.hasPressed()) {
+            self.container_manager.bringHoverRootToFront();
+        }
+
+        self.key_pressed = 0;
+        self.input_text[0] = 0;
+        self.mouse_input.end();
+        if (self.command_list.head) |head| {
+            self.container_manager.updateRender(head);
+        }
+    }
+
+    /// Mở một cửa sổ popup tại vị trí chuột hiện tại.
+    pub fn openPopup(self: *MicroUI, name: [:0]const u8) void {
+        const cnt = self.getContainerByName(name) orelse return;
+        self.container_manager.setPopup(cnt);
+        cnt.*.rect = math.rect(self.mouse_input.pos.x, self.mouse_input.pos.y, 1, 1);
+        cnt.*.open = 1;
+        self.bringToFront(cnt);
+    }
 
     // =========================================================================
     // 4.2 Lifecycle Management
     // =========================================================================
 
     /// Lấy con trỏ tham chiếu đến cấu hình Style giao diện hiện tại.
-    pub fn getStyle(self: *MicroUI) *Style {
+    pub inline fn getStyle(self: *MicroUI) *Style {
         return &self.style;
     }
 
     /// Khởi tạo instance MicroUI thuần Zig.
-    pub fn init(
-        allocator: std.mem.Allocator,
-        text_width: TextWidthFn,
-        text_height: TextHeightFn,
-    ) !MicroUI {
+    pub fn init(allocator: std.mem.Allocator, text_width: TextWidthFn, text_height: TextHeightFn) !MicroUI {
         const command_list = try command_mod.CommandList.init(allocator);
         errdefer command_list.deinit(allocator);
 
@@ -299,115 +260,58 @@ pub const MicroUI = struct {
     // 4.3 Command Buffer API
     // =========================================================================
 
-    /// Xóa toàn bộ lệnh vẽ trong buffer.
-    pub fn clearCommandList(self: *MicroUI) void {
-        self.command_list.clear();
-    }
-
     /// Đẩy một lệnh vẽ hình chữ nhật vào danh sách lệnh.
-    pub fn pushRect(self: *MicroUI, draw_rect: math.Rect, color: Color) void {
-        _ = self.command_list.pushRect(draw_rect, color) catch unreachable;
+    pub inline fn pushRect(self: *MicroUI, draw_rect: math.Rect, color: Color) !*command_mod.Command {
+        return self.command_list.pushRect(draw_rect, color);
     }
 
     /// Đẩy một lệnh vẽ biểu tượng vào danh sách lệnh.
-    pub fn pushIcon(self: *MicroUI, id: i32, draw_rect: math.Rect, color: Color) void {
-        _ = self.command_list.pushIcon(id, draw_rect, color) catch unreachable;
+    pub inline fn pushIcon(self: *MicroUI, id: i32, draw_rect: math.Rect, color: Color) !*command_mod.Command {
+        return self.command_list.pushIcon(id, draw_rect, color) catch unreachable;
     }
 
     /// Đẩy một lệnh cắt khung nhìn (clipping) vào danh sách lệnh.
-    pub fn pushClip(self: *MicroUI, r: math.Rect) void {
-        _ = self.command_list.pushClip(r) catch unreachable;
+    pub inline fn pushClip(self: *MicroUI, r: math.Rect) !*command_mod.Command {
+        return self.command_list.pushClip(r);
     }
 
     /// Đẩy một lệnh vẽ văn bản vào danh sách lệnh.
-    pub fn pushText(
-        self: *MicroUI,
-        text: []const u8,
-        pos: math.Vec2,
-        color: Color,
-        font: Font,
-    ) void {
-        _ = self.command_list.pushText(text, pos, color, font) catch unreachable;
+    pub fn pushText(self: *MicroUI, text: []const u8, pos: math.Vec2, color: Color, font: Font) !*command_mod.Command {
+        return self.command_list.pushText(text, pos, color, font) catch unreachable;
     }
 
     /// Lấy con trỏ đến lệnh đầu tiên trong danh sách lệnh.
-    pub fn getBegin(self: *MicroUI) ?*command_mod.Command {
-        return self.command_list.getBegin();
+    pub inline fn getBegin(self: *MicroUI) ?*command_mod.Command {
+        return self.command_list.first();
     }
 
     /// Lấy con trỏ đến lệnh cuối cùng trong danh sách lệnh.
-    pub fn getEnd(self: *MicroUI) ?*command_mod.Command {
-        return self.command_list.getEnd();
+    pub inline fn getEnd(self: *MicroUI) ?*command_mod.Command {
+        return self.command_list.last();
     }
 
     /// Duyệt lệnh vẽ tiếp theo trong command buffer (Iterator).
     pub fn nextCommand(self: *MicroUI, cmd: *?*command_mod.Command) bool {
-        return self.command_list.getNextCommand(cmd);
-    }
-
-    // =========================================================================
-    // 4.4 Frame Lifecycle
-    // =========================================================================
-
-    /// Bắt đầu một frame giao diện mới, chuẩn bị danh sách lệnh và cập nhật input.
-    pub fn begin(self: *MicroUI) void {
-        std.debug.assert(self.text_width != null and self.text_height != null);
-
-        self.clearCommandList();
-        self.root_list.clear();
-        self.scroll_target = null;
-        self.hover_root = self.next_hover_root;
-        self.next_hover_root = null;
-        self.mouse_delta.x = self.mouse_pos.x - self.last_mouse_pos.x;
-        self.mouse_delta.y = self.mouse_pos.y - self.last_mouse_pos.y;
-        self.frame += 1;
-    }
-
-    /// Hàm so sánh trật tự chiều sâu Z-Index giữa hai root container phục vụ thuật toán sắp xếp.
-    fn compareContainersByZIndex(_: void, a: *Container, b: *Container) bool {
-        return a.*.zindex < b.*.zindex;
-    }
-
-    /// Kết thúc frame giao diện hiện tại và liên kết chuỗi lệnh render của các root container theo Z-Index.
-    pub fn end(self: *MicroUI) void {
-        std.debug.assert(self.id_stack.idx == 0);
-        std.debug.assert(self.clip_stack.idx == 0);
-        std.debug.assert(self.layout_stack.idx == 0);
-        std.debug.assert(self.container_stack.idx == 0);
-
-        if (self.scroll_target) |st| {
-            st.scroll.x += self.scroll_delta.x;
-            st.scroll.y += self.scroll_delta.y;
-        }
-
-        if (!self.updated_focus) {
-            self.focus = 0;
-        }
-        self.updated_focus = false;
-
-        if (self.mouse_pressed != 0 and
-            self.next_hover_root != null and
-            self.next_hover_root.?.zindex < self.last_zindex and
-            self.next_hover_root.?.zindex >= 0)
-        {
-            self.bringToFront(self.next_hover_root.?);
-        }
-
-        self.key_pressed = 0;
-        self.input_text[0] = 0;
-        self.mouse_pressed = 0;
-        self.scroll_delta = .{ .x = 0, .y = 0 };
-        self.last_mouse_pos = self.mouse_pos;
-
-        const root_items = self.root_list.getSlice();
-        if (root_items.len > 0) {
-            std.mem.sort(*Container, root_items, {}, compareContainersByZIndex);
-            self.command_list.begin.?.jump.dst = root_items[0].head.?.base.next;
-            for (root_items[1..], 0..) |cnt, i| {
-                root_items[i].tail.?.jump.dst = cnt.head.?.base.next;
+        if (cmd.*) |tmp| {
+            if (tmp != self.command_list.tail) {
+                cmd.* = tmp.base.next;
+            } else if (tmp.type != command_mod.Type.jump) {
+                return false;
             }
-            root_items[root_items.len - 1].tail.?.jump.dst = null;
+        } else {
+            cmd.* = self.command_list.head;
         }
+
+        while (cmd.*) |tmp| : (cmd.* = tmp.jump.dst) {
+            if (tmp.type != command_mod.Type.jump) {
+                return cmd.* != null;
+            }
+        }
+        return cmd.* != null;
+    }
+
+    pub inline fn getHeadCommand(self: *MicroUI) ?*command_mod.Command {
+        return self.command_list.first();
     }
 
     // =========================================================================
@@ -415,43 +319,41 @@ pub const MicroUI = struct {
     // =========================================================================
 
     /// Cập nhật toạ độ con trỏ chuột.
-    pub fn inputMousemove(self: *MicroUI, x: i32, y: i32) void {
-        self.mouse_pos = math.vec2(x, y);
+    pub inline fn inputMousemove(self: *MicroUI, x: i32, y: i32) void {
+        self.mouse_input.move(x, y);
     }
 
     /// Ghi nhận sự kiện nhấn nút chuột.
-    pub fn inputMousedown(self: *MicroUI, x: i32, y: i32, btn: i32) void {
-        self.inputMousemove(x, y);
-        self.mouse_down |= btn;
-        self.mouse_pressed |= btn;
+    pub inline fn inputMousedown(self: *MicroUI, x: i32, y: i32, btn: i32) void {
+        self.mouse_input.press(x, y, btn);
     }
 
     /// Ghi nhận sự kiện nhả nút chuột.
-    pub fn inputMouseup(self: *MicroUI, x: i32, y: i32, btn: i32) void {
-        self.inputMousemove(x, y);
-        self.mouse_down &= ~btn;
+    pub inline fn inputMouseup(self: *MicroUI, x: i32, y: i32, btn: i32) void {
+        self.mouse_input.release(x, y, btn);
     }
 
     /// Ghi nhận sự kiện cuộn con lăn chuột.
-    pub fn inputScroll(self: *MicroUI, x: i32, y: i32) void {
-        self.scroll_delta.x += x;
-        self.scroll_delta.y += y;
+    pub inline fn inputScroll(self: *MicroUI, x: i32, y: i32) void {
+        self.mouse_input.scroll(x, y);
     }
 
     /// Ghi nhận sự kiện nhấn phím bàn phím.
-    pub fn inputKeydown(self: *MicroUI, key: i32) void {
+    pub inline fn inputKeydown(self: *MicroUI, key: i32) void {
         self.key_pressed |= key;
         self.key_down |= key;
     }
 
     /// Ghi nhận sự kiện nhả phím bàn phím.
-    pub fn inputKeyup(self: *MicroUI, key: i32) void {
+    pub inline fn inputKeyup(self: *MicroUI, key: i32) void {
         self.key_down &= ~key;
     }
 
     /// Ghi nhận sự kiện nhập chuỗi ký tự UTF-8 (Text Input).
     pub fn inputText(self: *MicroUI, text: [*c]const u8) void {
-        if (text == null) return;
+        if (text == null) {
+            return;
+        }
         const span = std.mem.span(text);
         const input_buf = &self.input_text;
         const current_len = std.mem.sliceTo(input_buf, 0).len;
@@ -469,7 +371,7 @@ pub const MicroUI = struct {
 
     /// Kiểm tra trạng thái cắt clip của hình chữ nhật `r` so với vùng clip hiện tại.
     pub fn checkClip(self: *MicroUI, r: math.Rect) i32 {
-        const cr = self.clip_stack.getValue();
+        const cr = self.clip_stack.top();
         if (r.x > cr.x + cr.w or r.x + r.w < cr.x or r.y > cr.y + cr.h or r.y + r.h < cr.y) {
             return Clip.ALL;
         }
@@ -481,23 +383,23 @@ pub const MicroUI = struct {
 
     /// Đẩy một vùng cắt mới vào ngăn xếp clip (giao thoa với vùng clip cũ).
     pub fn pushClipRect(self: *MicroUI, r: math.Rect) void {
-        const last = self.clip_stack.getValue();
+        const last = self.clip_stack.top();
         self.clip_stack.push(r.intersect(last));
     }
 
     /// Vẽ một hình chữ nhật với màu tương ứng (có kiểm tra clip).
-    pub fn drawRect(self: *MicroUI, r: math.Rect, col: Color) void {
-        const draw_rect = r.intersect(self.clip_stack.getValue());
+    pub fn drawRect(self: *MicroUI, r: math.Rect, col: Color) !void {
+        const draw_rect = r.intersect(self.clip_stack.top());
         if (draw_rect.w > 0 and draw_rect.h > 0) {
-            self.pushRect(draw_rect, col);
+            _ = try self.pushRect(draw_rect, col);
         }
     }
 
     /// Vẽ khung nền và viền của control theo color_id.
-    fn drawFrame(self: *MicroUI, r: math.Rect, color_id: i32) void {
+    fn drawFrame(self: *MicroUI, r: math.Rect, color_id: i32) !void {
         const style_ptr = self.getStyle();
         const colors = style_ptr.colors;
-        self.drawRect(r, colors[@intCast(color_id)]);
+        _ = try self.drawRect(r, colors[@intCast(color_id)]);
         if (color_id == style_mod.COLOR_SCROLLBASE or color_id == style_mod.COLOR_SCROLLTHUMB or
             color_id == style_mod.COLOR_TITLEBG)
         {
@@ -506,29 +408,23 @@ pub const MicroUI = struct {
         const border_col = colors[style_mod.ColorId.border_idx];
         if (border_col.a != 0) {
             const b = r.expand(1);
-            self.drawRect(math.rect(b.x + 1, b.y, b.w - 2, 1), border_col);
-            self.drawRect(math.rect(b.x + 1, b.y + b.h - 1, b.w - 2, 1), border_col);
-            self.drawRect(math.rect(b.x, b.y, 1, b.h), border_col);
-            self.drawRect(math.rect(b.x + b.w - 1, b.y, 1, b.h), border_col);
+            _ = try self.drawRect(math.rect(b.x + 1, b.y, b.w - 2, 1), border_col);
+            _ = try self.drawRect(math.rect(b.x + 1, b.y + b.h - 1, b.w - 2, 1), border_col);
+            _ = try self.drawRect(math.rect(b.x, b.y, 1, b.h), border_col);
+            _ = try self.drawRect(math.rect(b.x + b.w - 1, b.y, 1, b.h), border_col);
         }
     }
 
     /// Vẽ biểu tượng (Icon) có kiểm tra clip.
-    pub fn drawIcon(self: *MicroUI, id: i32, r: math.Rect, col: Color) void {
-        const clipped = r.intersect(self.clip_stack.getValue());
+    pub fn drawIcon(self: *MicroUI, id: i32, r: math.Rect, col: Color) !void {
+        const clipped = r.intersect(self.clip_stack.top());
         if (clipped.w > 0 and clipped.h > 0) {
-            self.pushIcon(id, clipped, col);
+            _ = try self.pushIcon(id, clipped, col);
         }
     }
 
     /// Vẽ văn bản với font, vị trí và màu chỉ định (tự động cắt clip một phần hoặc toàn bộ).
-    pub fn drawTextEx(
-        self: *MicroUI,
-        font: Font,
-        text: []const u8,
-        pos: math.Vec2,
-        col: Color,
-    ) void {
+    pub fn drawTextEx(self: *MicroUI, font: Font, text: []const u8, pos: math.Vec2, col: Color) !void {
         if (text.len == 0) return;
         const text_width = self.text_width.?(font, &text[0], @intCast(text.len));
         const text_height = self.text_height.?(font);
@@ -538,16 +434,16 @@ pub const MicroUI = struct {
             return;
         }
         if (clipped == Clip.PART) {
-            self.pushClip(self.clip_stack.getValue());
+            _ = try self.pushClip(self.clip_stack.top());
         }
-        self.pushText(text, pos, col, font);
+        _ = try self.pushText(text, pos, col, font);
         if (clipped != 0) {
-            self.pushClip(math.rect(0, 0, 0x1000000, 0x1000000));
+            _ = try self.pushClip(math.rect(0, 0, 0x1000000, 0x1000000));
         }
     }
 
     /// Vẽ khung nền của widget điều khiển, tự động đổi màu khi hover hoặc focus.
-    pub fn drawControlFrame(self: *MicroUI, id: Id, rect_val: math.Rect, color_id: i32, opt: i32) void {
+    pub fn drawControlFrame(self: *MicroUI, id: Id, rect_val: math.Rect, color_id: i32, opt: i32) !void {
         if ((opt & Opt.NOFRAME) != 0) {
             return;
         }
@@ -557,11 +453,11 @@ pub const MicroUI = struct {
         } else if (self.hover == id) {
             color_val += 1;
         }
-        self.drawFrame(rect_val, color_val);
+        _ = try self.drawFrame(rect_val, color_val);
     }
 
     /// Vẽ văn bản bên trong một widget điều khiển theo căn lề (trái, giữa, phải).
-    pub fn drawControlText(self: *MicroUI, text: [*c]const u8, rect_val: math.Rect, color_id: i32, opt: i32) void {
+    pub fn drawControlText(self: *MicroUI, text: [*c]const u8, rect_val: math.Rect, color_id: i32, opt: i32) !void {
         if (text == null) return;
         const style_ptr = self.getStyle();
         const font = style_ptr.font;
@@ -580,7 +476,7 @@ pub const MicroUI = struct {
         }
         const col = style_ptr.colors[@intCast(color_id)];
         const span = std.mem.span(text);
-        self.drawTextEx(font, span, pos, col);
+        _ = try self.drawTextEx(font, span, pos, col);
     }
 
     // =========================================================================
@@ -590,13 +486,12 @@ pub const MicroUI = struct {
     /// Băm dữ liệu định danh kết hợp với ID cha để tạo mã Id (FNV-1a 32-bit).
     pub fn getId(self: *MicroUI, data: ?*const anyopaque, size: usize) Id {
         const idx = self.id_stack.idx;
-        var res: u32 = if (idx > 0) self.id_stack.getValue() else 2166136261;
+        var res: u32 = if (idx > 0) self.id_stack.top() else 2166136261;
 
         if (data) |p| {
             const bytes: [*]const u8 = @ptrCast(p);
-            var i: usize = 0;
-            while (i < size) : (i += 1) {
-                res = (res ^ bytes[i]) *% 16777619;
+            for (bytes[0..size]) |b| {
+                res = (res ^ b) *% 16777619;
             }
         }
         self.last_id = res;
@@ -604,32 +499,9 @@ pub const MicroUI = struct {
     }
 
     /// Đặt tiêu điểm nhập liệu (focus) cho widget có mã ID tương ứng.
-    pub fn setFocus(self: *MicroUI, id: Id) void {
+    pub inline fn setFocus(self: *MicroUI, id: Id) void {
         self.focus = id;
         self.updated_focus = true;
-    }
-
-    /// Kiểm tra con trỏ chuột có đang lơ lửng (hover) trên hình chữ nhật `r` hay không.
-    pub fn mouseOver(self: *MicroUI, r: math.Rect) bool {
-        if (!r.overlapsVec2(self.mouse_pos) or
-            !self.clip_stack.getValue().overlapsVec2(self.mouse_pos))
-        {
-            return false;
-        }
-        var i = self.container_stack.idx;
-        while (i > 0) {
-            i -= 1;
-            const cnt = self.container_stack.items[i];
-            if (self.hover_root) |hr| {
-                if (cnt == hr) {
-                    return true;
-                }
-            }
-            if (cnt.*.head != null) {
-                break;
-            }
-        }
-        return false;
     }
 
     /// Cập nhật trạng thái hover và focus của widget theo tương tác chuột.
@@ -642,21 +514,21 @@ pub const MicroUI = struct {
         if ((opt & Opt.NOINTERACT) != 0) {
             return;
         }
-        if (mouseover and self.mouse_down == 0) {
+        if (mouseover and !self.mouse_input.hasDown()) {
             self.hover = id;
         }
 
         if (self.focus == id) {
-            if (self.mouse_pressed != 0 and !mouseover) {
+            if (self.mouse_input.hasPressed() and !mouseover) {
                 self.setFocus(0);
             }
-            if (self.mouse_down == 0 and (~opt & Opt.HOLDFOCUS) != 0) {
+            if (!self.mouse_input.hasDown() and (~opt & Opt.HOLDFOCUS) != 0) {
                 self.setFocus(0);
             }
         }
 
         if (self.hover == id) {
-            if (self.mouse_pressed != 0) {
+            if (self.mouse_input.hasPressed()) {
                 self.setFocus(id);
             } else if (!mouseover) {
                 self.hover = 0;
@@ -669,225 +541,78 @@ pub const MicroUI = struct {
     // =========================================================================
 
     /// Lấy con trỏ đến trạng thái layout hiện tại ở đỉnh stack.
-    pub fn getLayout(self: *MicroUI) *Layout {
-        return self.layout_stack.getPValue();
+    pub inline fn getLayout(self: *MicroUI) *Layout {
+        return self.layout_manager.getCurrent();
     }
 
     /// Đẩy một layout mới vào stack với vùng thân (body) và vị trí cuộn (scroll).
-    pub fn pushLayout(self: *MicroUI, body: math.Rect, scroll: math.Vec2) void {
-        var layout: Layout = .{};
-        layout.body = math.rect(body.x - scroll.x, body.y - scroll.y, body.w, body.h);
-        layout.max = math.vec2(-0x1000000, -0x1000000);
-        self.layout_stack.push(layout);
-        self.layoutRow(&[_]i32{0}, 0);
-    }
-
-    /// Thiết lập cấu hình hàng layout với mảng độ rộng `widths` và chiều cao `height`.
-    pub fn layoutRowEx(self: *MicroUI, items: i32, widths: ?[]const i32, height: i32) void {
-        const layout = self.getLayout();
-        if (widths) |w| {
-            std.debug.assert(items <= MAX_WIDTHS);
-            for (w, 0..) |width, i| {
-                layout.*.widths[i] = width;
-            }
-        }
-        layout.*.items = items;
-        layout.*.item_index = 0;
-        layout.*.position = math.vec2(layout.*.indent, layout.*.next_row);
-        layout.*.size.y = height;
-        layout.*.next_type = 0;
-    }
-
-    /// Thiết lập cấu hình hàng layout ngắn gọn.
-    pub fn layoutRow(self: *MicroUI, widths: []const i32, height: i32) void {
-        self.layoutRowEx(@intCast(widths.len), widths, height);
+    pub inline fn pushLayout(self: *MicroUI, body: math.Rect, scroll: math.Vec2) void {
+        self.layout_manager.push(body, scroll);
     }
 
     /// Đặt độ rộng cho widget kế tiếp trong hàng.
-    pub fn layoutWidth(self: *MicroUI, width: i32) void {
-        self.getLayout().*.size.x = width;
+    pub inline fn layoutWidth(self: *MicroUI, width: i32) void {
+        self.getLayout().size.x = width;
     }
 
     /// Đặt chiều cao cho hàng hiện tại.
-    pub fn layoutHeight(self: *MicroUI, height: i32) void {
-        self.getLayout().*.size.y = height;
+    pub inline fn layoutHeight(self: *MicroUI, height: i32) void {
+        self.getLayout().size.y = height;
     }
 
     /// Đặt vị trí và kích thước thủ công cho widget kế tiếp.
-    pub fn layoutSetNext(self: *MicroUI, r: math.Rect, relative: bool) void {
-        const layout = self.getLayout();
-        layout.*.next = r;
-        layout.*.next_type = if (relative) 1 else 2;
+    pub inline fn layoutSetNext(self: *MicroUI, r: math.Rect, relative: bool) void {
+        self.layout_manager.setNext(r, relative);
     }
 
     /// Tính toán toạ độ và kích thước cho widget kế tiếp theo cơ chế phân bổ layout.
-    pub fn layoutNext(self: *MicroUI) math.Rect {
-        const layout = self.getLayout();
-        const style_ptr = self.getStyle();
-        var res: math.Rect = .{};
-
-        if (layout.*.next_type != 0) {
-            const next_type = layout.*.next_type;
-            layout.*.next_type = 0;
-            res = layout.*.next;
-            if (next_type == 2) {
-                self.last_rect = res;
-                return res;
-            }
-        } else {
-            if (layout.*.item_index == layout.*.items) {
-                self.layoutRowEx(layout.*.items, null, layout.*.size.y);
-            }
-
-            res.x = layout.*.position.x;
-            res.y = layout.*.position.y;
-            res.w = layout.*.items;
-            res.h = layout.*.size.y;
-
-            if (layout.*.items > 0) {
-                res.w = layout.*.widths[@intCast(layout.*.item_index)];
-            } else {
-                res.w = layout.*.size.x;
-            }
-
-            if (res.w == 0) {
-                res.w = style_ptr.size.x + style_ptr.padding * 2;
-            }
-            if (res.h == 0) {
-                res.h = style_ptr.size.y + style_ptr.padding * 2;
-            }
-            if (res.w < 0) {
-                res.w += layout.*.body.w - res.x + 1;
-            }
-            if (res.h < 0) {
-                res.h += layout.*.body.h - res.y + 1;
-            }
-
-            layout.*.item_index += 1;
-        }
-
-        layout.*.position.x += res.w + style_ptr.spacing;
-        layout.*.next_row = @max(layout.*.next_row, res.y + res.h + style_ptr.spacing);
-
-        res.x += layout.*.body.x;
-        res.y += layout.*.body.y;
-
-        layout.*.max.x = @max(layout.*.max.x, res.x + res.w);
-        layout.*.max.y = @max(layout.*.max.y, res.y + res.h);
-
-        self.last_rect = res;
-        return res;
+    pub inline fn layoutNext(self: *MicroUI) math.Rect {
+        self.last_rect = self.layout_manager.getNext(self.getStyle());
+        return self.last_rect;
     }
 
     /// Bắt đầu một cột con lồng nhau bên trong layout hàng hiện tại.
-    pub fn layoutBeginColumn(self: *MicroUI) void {
-        self.pushLayout(self.layoutNext(), math.vec2(0, 0));
+    pub inline fn layoutBeginColumn(self: *MicroUI) void {
+        self.layout_manager.beginColumn(self.layoutNext());
     }
 
     /// Kết thúc cột con, cập nhật lại kích thước cho layout cha.
-    pub fn layoutEndColumn(self: *MicroUI) void {
-        const b = self.getLayout().*;
-        _ = self.layout_stack.pop();
-        const a = self.getLayout();
-        a.*.position.x = @max(a.*.position.x, b.position.x + b.body.x - a.*.body.x);
-        a.*.next_row = @max(a.*.next_row, b.next_row + b.body.y - a.*.body.y);
-        a.*.max.x = @max(a.*.max.x, b.max.x);
-        a.*.max.y = @max(a.*.max.y, b.max.y);
+    pub inline fn layoutEndColumn(self: *MicroUI) void {
+        self.layout_manager.endColumn();
+    }
+
+    pub inline fn setLayoutRow(self: *MicroUI, widths: []const i32, height: i32) void {
+        self.layout_manager.setRow(widths, height);
     }
 
     // =========================================================================
     // 4.9 Container & State Pool Management
     // =========================================================================
 
-    /// Tra cứu vị trí phần tử trong pool theo ID.
-    pub fn poolGet(_: *MicroUI, items: []PoolItem, id: Id) ?usize {
-        var i: usize = 0;
-        while (i < items.len) : (i += 1) {
-            if (items[i].id == id) {
-                return i;
-            }
-        }
-        return null;
-    }
-
-    /// Cập nhật thời điểm sử dụng mới nhất cho phần tử trong pool.
-    pub fn poolUpdate(self: *MicroUI, items: []PoolItem, idx: usize) void {
-        items[idx].last_update = self.frame;
-    }
-
-    /// Khởi tạo hoặc tái sử dụng phần tử ít được dùng nhất (LRU) trong pool.
-    pub fn poolInit(self: *MicroUI, items: []PoolItem, id: Id) usize {
-        var f: i32 = self.frame;
-        var n: usize = 0;
-        var i: usize = 0;
-        while (i < items.len) : (i += 1) {
-            if (items[i].last_update < f) {
-                f = items[i].last_update;
-                n = i;
-            }
-        }
-        items[n].id = id;
-        self.poolUpdate(items, n);
-        return n;
-    }
-
     /// Lấy hoặc tạo mới một Container theo ID.
-    pub fn getContainer(self: *MicroUI, id: Id, opt: i32) ?*Container {
-        const pool = &self.container_pool;
-        var idx = self.poolGet(pool, id);
-        if (idx) |val| {
-            if (self.containers[val].open != 0 or (opt & Opt.CLOSED) == 0) {
-                self.poolUpdate(pool, val);
-            }
-            return &self.containers[val];
-        }
-        if ((opt & Opt.CLOSED) != 0) {
-            return null;
-        }
-        idx = self.poolInit(pool, id);
-        const cnt = &self.containers[idx.?];
-        cnt.* = .{};
-        cnt.*.open = 1;
-        self.bringToFront(cnt);
-        return cnt;
+    pub inline fn getContainer(self: *MicroUI, id: Id, opt: i32) ?*container_mod.Container {
+        return self.container_manager.getOrAlloc(id, opt, self.frame);
     }
 
     /// Lấy con trỏ Container theo tên tiêu đề.
-    pub fn getContainerByName(self: *MicroUI, name: [:0]const u8) ?*Container {
+    pub inline fn getContainerByName(self: *MicroUI, name: [:0]const u8) ?*container_mod.Container {
         const id = self.getId(name.ptr, name.len);
         return self.getContainer(id, 0);
     }
 
-    /// Lấy container hiện tại đang được xử lý ở đỉnh stack.
-    pub fn getCurrentContainer(self: *MicroUI) *Container {
-        return self.container_stack.getValue();
-    }
-
     /// Đẩy body của container vào layout và tính toán thanh cuộn.
-    pub fn pushContainerBody(self: *MicroUI, cnt: *Container, body: math.Rect, opt: i32) void {
+    pub fn pushContainerBody(self: *MicroUI, cnt: *container_mod.Container, body: math.Rect, opt: i32) !void {
         var b = body;
         if ((opt & Opt.NOSCROLL) == 0) {
-            self.scrollbars(cnt, &b);
+            try self.scrollbars(cnt, &b);
         }
-        self.pushLayout(b.expand(-self.getStyle().padding), cnt.*.scroll);
-        cnt.*.body = b;
-    }
-
-    /// Đóng và đưa container hiện tại ra khỏi ngăn xếp xử lý.
-    pub fn popContainer(self: *MicroUI) void {
-        const cnt = self.getCurrentContainer();
-        const layout = self.getLayout();
-        cnt.*.content_size.x = layout.*.max.x - layout.*.body.x;
-        cnt.*.content_size.y = layout.*.max.y - layout.*.body.y;
-        _ = self.container_stack.pop();
-        _ = self.layout_stack.pop();
-        _ = self.id_stack.pop();
+        self.pushLayout(b.expand(-self.getStyle().padding), cnt.scroll);
+        cnt.body = b;
     }
 
     /// Đưa container lên lớp trên cùng (Z-Index cao nhất).
-    pub fn bringToFront(self: *MicroUI, cnt: *Container) void {
-        cnt.*.zindex = self.last_zindex + 1;
-        self.last_zindex += 1;
+    pub inline fn bringToFront(self: *MicroUI, cnt: *container_mod.Container) void {
+        self.container_manager.bringToFront(cnt);
     }
 
     // =========================================================================
@@ -900,13 +625,7 @@ pub const MicroUI = struct {
     };
 
     /// Xử lý logic tính toán và vẽ thanh cuộn theo một trục (dọc hoặc ngang).
-    pub fn scrollbar(
-        self: *MicroUI,
-        cnt: *Container,
-        body: *math.Rect,
-        cs: math.Vec2,
-        axis: ScrollbarAxis,
-    ) void {
+    pub fn scrollbar(self: *MicroUI, cnt: *container_mod.Container, body: *math.Rect, cs: math.Vec2, axis: ScrollbarAxis) !void {
         const style_ptr = self.getStyle();
         const sz = style_ptr.scrollbar_size;
         switch (axis) {
@@ -919,21 +638,21 @@ pub const MicroUI = struct {
                     base.w = sz;
 
                     self.updateControl(id, base, 0);
-                    if (self.focus == id and self.mouse_down == Mouse.LEFT) {
-                        cnt.scroll.y += @divTrunc(self.mouse_delta.y * cs.y, base.h);
+                    if (self.focus == id and self.mouse_input.isDown(Mouse.LEFT)) {
+                        cnt.scroll.y += @divTrunc(self.mouse_input.delta.y * cs.y, base.h);
                     }
                     cnt.scroll.y = std.math.clamp(cnt.scroll.y, 0, maxscroll);
 
-                    self.drawFrame(base, style_mod.COLOR_SCROLLBASE);
+                    _ = try self.drawFrame(base, style_mod.COLOR_SCROLLBASE);
 
                     var thumb = base;
                     thumb.h = @max(style_ptr.thumb_size, @divTrunc(base.h * body.h, cs.y));
                     thumb.y += @divTrunc(cnt.scroll.y * (base.h - thumb.h), maxscroll);
 
-                    self.drawFrame(thumb, style_mod.COLOR_SCROLLTHUMB);
+                    try self.drawFrame(thumb, style_mod.COLOR_SCROLLTHUMB);
 
                     if (self.mouseOver(body.*)) {
-                        self.scroll_target = cnt;
+                        self.container_manager.setScrollTarget(cnt);
                     }
                 } else {
                     cnt.scroll.y = 0;
@@ -948,21 +667,21 @@ pub const MicroUI = struct {
                     base.h = sz;
 
                     self.updateControl(id, base, 0);
-                    if (self.focus == id and self.mouse_down == Mouse.LEFT) {
-                        cnt.scroll.x += @divTrunc(self.mouse_delta.x * cs.x, base.w);
+                    if (self.focus == id and self.mouse_input.isDown(Mouse.LEFT)) {
+                        cnt.scroll.x += @divTrunc(self.mouse_input.delta.x * cs.x, base.w);
                     }
                     cnt.scroll.x = std.math.clamp(cnt.scroll.x, 0, maxscroll);
 
-                    self.drawFrame(base, style_mod.COLOR_SCROLLBASE);
+                    _ = try self.drawFrame(base, style_mod.COLOR_SCROLLBASE);
 
                     var thumb = base;
                     thumb.w = @max(style_ptr.thumb_size, @divTrunc(base.w * body.w, cs.x));
                     thumb.x += @divTrunc(cnt.scroll.x * (base.w - thumb.w), maxscroll);
 
-                    self.drawFrame(thumb, style_mod.COLOR_SCROLLTHUMB);
+                    _ = try self.drawFrame(thumb, style_mod.COLOR_SCROLLTHUMB);
 
                     if (self.mouseOver(body.*)) {
-                        self.scroll_target = cnt;
+                        self.container_manager.setScrollTarget(cnt);
                     }
                 } else {
                     cnt.scroll.x = 0;
@@ -972,7 +691,7 @@ pub const MicroUI = struct {
     }
 
     /// Tính toán và vẽ toàn bộ thanh cuộn (dọc + ngang) cho container.
-    pub fn scrollbars(self: *MicroUI, cnt: *Container, body: *math.Rect) void {
+    pub fn scrollbars(self: *MicroUI, cnt: *container_mod.Container, body: *math.Rect) !void {
         const style_ptr = self.getStyle();
         const sz = style_ptr.scrollbar_size;
         var content_size = cnt.*.content_size;
@@ -985,8 +704,8 @@ pub const MicroUI = struct {
         if (content_size.x > body.w) {
             body.h -= sz;
         }
-        self.scrollbar(cnt, body, content_size, .vertical);
-        self.scrollbar(cnt, body, content_size, .horizontal);
+        try self.scrollbar(cnt, body, content_size, .vertical);
+        try self.scrollbar(cnt, body, content_size, .horizontal);
         _ = self.clip_stack.pop();
     }
 
@@ -994,48 +713,39 @@ pub const MicroUI = struct {
     // 4.11 Windows, Panels & Popups
     // =========================================================================
 
-    /// Bắt đầu một root container (cửa sổ độc lập hoặc popup trên cùng).
-    pub fn beginRootContainer(self: *MicroUI, cnt: *Container) void {
-        self.container_stack.push(cnt);
-        self.root_list.push(cnt);
-        cnt.*.head = self.command_list.pushJump(null) catch unreachable;
-        if (cnt.rect.overlapsVec2(self.mouse_pos) and
-            (self.next_hover_root == null or cnt.*.zindex > self.next_hover_root.?.zindex))
-        {
-            self.next_hover_root = cnt;
-        }
-        self.clip_stack.push(math.rect(0, 0, 0x1000000, 0x1000000));
-    }
-
     /// Kết thúc một root container.
     pub fn endRootContainer(self: *MicroUI) void {
         const cnt = self.getCurrentContainer();
-        cnt.*.tail = self.command_list.pushJump(null) catch unreachable;
-        cnt.*.head.?.jump.dst = self.command_list.getEnd();
+        cnt.*.tail = self.command_list.pushJump(null) catch |err| blk: {
+            std.log.err("endRootContainer pushJump failed: {s}", .{@errorName(err)});
+            break :blk null;
+        };
+        // head.jump.dst (bỏ qua nội dung khi root lồng trong root khác, vd. popup)
+        // được trỏ tới lệnh ngay sau tail trong ContainerManager.updateRender().
         _ = self.clip_stack.pop();
         self.popContainer();
     }
 
     /// Bắt đầu một cửa sổ giao diện cơ bản.
-    pub fn beginWindow(self: *MicroUI, title: [:0]const u8, rect_val: math.Rect) bool {
+    pub inline fn beginWindow(self: *MicroUI, title: [:0]const u8, rect_val: math.Rect) !bool {
         return self.beginWindowEx(title, rect_val, 0);
     }
 
     /// Bắt đầu một cửa sổ giao diện kèm các tùy chọn cấu hình `Opt`.
-    pub fn beginWindowEx(self: *MicroUI, title: [:0]const u8, rect_val: math.Rect, opt: i32) bool {
+    pub fn beginWindowEx(self: *MicroUI, title: [:0]const u8, rect_val: math.Rect, opt: i32) !bool {
         const id = self.getId(title.ptr, title.len);
-        const cnt = self.getContainer(id, opt);
-        if (cnt == null or cnt.?.open == 0) {
+        const cnt = self.getContainer(id, opt) orelse return false;
+        if (cnt.open == 0) {
             return false;
         }
         self.id_stack.push(id);
-        if (cnt.?.rect.w == 0) {
-            cnt.?.rect = rect_val;
+        if (cnt.rect.w == 0) {
+            cnt.rect = rect_val;
         }
-        self.beginRootContainer(cnt.?);
-        var body = cnt.?.rect;
+        try self.beginRootContainer(cnt);
+        var body = cnt.rect;
         if (~opt & Opt.NOFRAME != 0) {
-            self.drawFrame(body, style_mod.COLOR_WINDOWBG);
+            try self.drawFrame(body, style_mod.COLOR_WINDOWBG);
         }
         if (~opt & Opt.NOTITLE != 0) {
             var tr = math.rect(
@@ -1044,16 +754,16 @@ pub const MicroUI = struct {
                 body.w,
                 self.getStyle().title_height,
             );
-            self.drawFrame(tr, style_mod.COLOR_TITLEBG);
+            try self.drawFrame(tr, style_mod.COLOR_TITLEBG);
 
             // Xử lý kéo thả cửa sổ bằng thanh tiêu đề
             {
                 const title_id = self.getId("!title", 6);
                 self.updateControl(title_id, tr, opt);
-                self.drawControlText(title, tr, style_mod.COLOR_TITLETEXT, opt);
-                if (title_id == self.focus and self.mouse_down == Mouse.LEFT) {
-                    cnt.?.rect.x += self.mouse_delta.x;
-                    cnt.?.rect.y += self.mouse_delta.y;
+                try self.drawControlText(title, tr, style_mod.COLOR_TITLETEXT, opt);
+                if (title_id == self.focus and self.mouse_input.isDown(Mouse.LEFT)) {
+                    cnt.rect.x += self.mouse_input.delta.x;
+                    cnt.rect.y += self.mouse_input.delta.y;
                 }
                 body.y += tr.h;
                 body.h -= tr.h;
@@ -1064,14 +774,14 @@ pub const MicroUI = struct {
                 const close_id = self.getId("!close", 6);
                 const close_rect = math.rect(tr.x + tr.w - tr.h, tr.y, tr.h, tr.h);
                 tr.w -= close_rect.w;
-                self.drawIcon(Icon.CLOSE, close_rect, self.getStyle().colors[style_mod.ColorId.title_text_idx]);
+                try self.drawIcon(Icon.CLOSE, close_rect, self.getStyle().colors[style_mod.ColorId.title_text_idx]);
                 self.updateControl(close_id, close_rect, opt);
-                if (self.mouse_pressed == Mouse.LEFT and close_id == self.focus) {
-                    cnt.?.open = 0;
+                if (self.mouse_input.isPressed(Mouse.LEFT) and close_id == self.focus) {
+                    cnt.open = 0;
                 }
             }
         }
-        self.pushContainerBody(cnt.?, body, opt);
+        try self.pushContainerBody(cnt, body, opt);
 
         // Xử lý thay đổi kích thước cửa sổ
         if (~opt & Opt.NORESIZE != 0) {
@@ -1084,28 +794,27 @@ pub const MicroUI = struct {
                 size,
             );
             self.updateControl(resize_id, resize_rect, opt);
-            if (resize_id == self.focus and self.mouse_down == Mouse.LEFT) {
-                cnt.?.rect.w = @max(96, cnt.?.rect.w + self.mouse_delta.x);
-                cnt.?.rect.h = @max(64, cnt.?.rect.h + self.mouse_delta.y);
+            if (resize_id == self.focus and self.mouse_input.isDown(Mouse.LEFT)) {
+                cnt.rect.w = @max(96, cnt.rect.w + self.mouse_input.delta.x);
+                cnt.rect.h = @max(64, cnt.rect.h + self.mouse_input.delta.y);
             }
         }
 
         // Tự động khớp kích thước theo nội dung bên trong
         if (opt & Opt.AUTOSIZE != 0) {
-            const r = self.getLayout().*.body;
-            cnt.?.rect.w = cnt.?.content_size.x + (cnt.?.rect.w - r.w);
-            cnt.?.rect.h = cnt.?.content_size.y + (cnt.?.rect.h - r.h);
+            const r = self.getLayout().body;
+            cnt.rect.w = cnt.content_size.x + (cnt.rect.w - r.w);
+            cnt.rect.h = cnt.content_size.y + (cnt.rect.h - r.h);
         }
 
         // Đóng popup khi nhấn ra bên ngoài
-        if (opt & Opt.POPUP != 0 and
-            self.mouse_pressed != 0 and
-            self.hover_root != cnt)
+        if (opt & Opt.POPUP != 0 and self.mouse_input.hasPressed() and
+            !self.container_manager.isHoverRoot(cnt))
         {
-            cnt.?.open = 0;
+            cnt.open = 0;
         }
 
-        self.pushClipRect(cnt.?.body);
+        self.pushClipRect(cnt.body);
         return true;
     }
 
@@ -1116,50 +825,25 @@ pub const MicroUI = struct {
     }
 
     /// Bắt đầu một bảng con (Panel).
-    pub fn beginPanel(self: *MicroUI, name: [:0]const u8) void {
-        self.beginPanelEx(name, 0);
-    }
-
-    /// Bắt đầu một bảng con kèm tùy chọn `Opt`.
-    pub fn beginPanelEx(self: *MicroUI, name: [:0]const u8, opt: i32) void {
-        const id = self.getId(name.ptr, name.len);
-        self.id_stack.push(id);
-        const cnt = self.getContainer(self.last_id, opt) orelse return;
-        const tmp = self.layoutNext();
-        cnt.*.rect = tmp;
-        if (~opt & Opt.NOFRAME != 0) {
-            self.drawFrame(tmp, style_mod.COLOR_PANELBG);
-        }
-        self.container_stack.push(cnt);
-        self.pushContainerBody(cnt, tmp, opt);
-        self.pushClipRect(cnt.*.body);
+    pub inline fn beginPanel(self: *MicroUI, name: [:0]const u8) !void {
+        try self.beginPanelEx(name, 0);
     }
 
     /// Kết thúc bảng con.
-    pub fn endPanel(self: *MicroUI) void {
+    pub inline fn endPanel(self: *MicroUI) void {
         _ = self.clip_stack.pop();
         self.popContainer();
     }
 
-    /// Mở một cửa sổ popup tại vị trí chuột hiện tại.
-    pub fn openPopup(self: *MicroUI, name: [:0]const u8) void {
-        const cnt = self.getContainerByName(name) orelse return;
-        self.hover_root = cnt;
-        self.next_hover_root = cnt;
-        cnt.*.rect = math.rect(self.mouse_pos.x, self.mouse_pos.y, 1, 1);
-        cnt.*.open = 1;
-        self.bringToFront(cnt);
-    }
-
     /// Bắt đầu render nội dung của popup đã được mở.
-    pub fn beginPopup(self: *MicroUI, name: [:0]const u8) i32 {
+    pub inline fn beginPopup(self: *MicroUI, name: [:0]const u8) !i32 {
         const opt = Opt.POPUP | Opt.AUTOSIZE | Opt.NORESIZE |
             Opt.NOSCROLL | Opt.NOTITLE | Opt.CLOSED;
-        return if (self.beginWindowEx(name, math.rect(0, 0, 0, 0), opt)) Res.ACTIVE else 0;
+        return if (try self.beginWindowEx(name, math.rect(0, 0, 0, 0), opt)) Res.ACTIVE else 0;
     }
 
     /// Kết thúc popup.
-    pub fn endPopup(self: *MicroUI) void {
+    pub inline fn endPopup(self: *MicroUI) void {
         self.endWindow();
     }
 
@@ -1168,77 +852,77 @@ pub const MicroUI = struct {
     // =========================================================================
 
     /// Vẽ một thanh tiêu đề thu gọn/mở rộng (Header).
-    pub fn header(self: *MicroUI, label: [:0]const u8) i32 {
+    pub inline fn header(self: *MicroUI, label: [:0]const u8) !i32 {
         return self.headerEx(label, 0);
     }
 
     /// Vẽ thanh tiêu đề kèm tùy chọn `Opt` (ví dụ: Opt.EXPANDED).
-    pub fn headerEx(self: *MicroUI, label: [:0]const u8, opt: i32) i32 {
+    pub fn headerEx(self: *MicroUI, label: [:0]const u8, opt: i32) !i32 {
         return self.headerInternal(label, false, opt);
     }
 
     /// Hàm xử lý chung logic đóng mở và tương tác cho Header và TreeNode.
-    fn headerInternal(self: *MicroUI, label: [:0]const u8, is_treenode: bool, opt: i32) i32 {
+    fn headerInternal(self: *MicroUI, label: [:0]const u8, is_treenode: bool, opt: i32) !i32 {
         const id = self.getId(label.ptr, label.len);
-        const pool = &self.treenode_pool;
-        const opt_idx = self.poolGet(pool, id);
-        self.layoutRow(&[_]i32{-1}, 0);
+        const opt_idx = self.treenode_pool.getIdToIndex(id);
+
+        self.layout_manager.setRow(&[_]i32{-1}, 0);
 
         var active = (opt_idx != null);
         const expanded = if ((opt & Opt.EXPANDED) != 0) !active else active;
         var r = self.layoutNext();
         self.updateControl(id, r, 0);
 
-        if (self.mouse_pressed == Mouse.LEFT and self.focus == id) {
+        if (self.mouse_input.isPressed(Mouse.LEFT) and self.focus == id) {
             active = !active;
         }
 
         if (opt_idx) |idx| {
             if (active) {
-                self.poolUpdate(pool, idx);
+                self.treenode_pool.update(idx, self.frame);
             } else {
-                pool[idx] = .{};
+                self.treenode_pool.reset(idx);
             }
         } else if (active) {
-            _ = self.poolInit(pool, id);
+            _ = self.treenode_pool.alloc(id, self.frame);
         }
 
         if (is_treenode) {
             if (self.hover == id) {
-                self.drawFrame(r, style_mod.COLOR_BUTTONHOVER);
+                try self.drawFrame(r, style_mod.COLOR_BUTTONHOVER);
             }
         } else {
-            self.drawControlFrame(id, r, style_mod.COLOR_BUTTON, 0);
+            try self.drawControlFrame(id, r, style_mod.COLOR_BUTTON, 0);
         }
 
         const icon_id: i32 = if (expanded) Icon.EXPANDED else Icon.COLLAPSED;
         const colors = self.getStyle().colors;
-        self.drawIcon(icon_id, math.rect(r.x, r.y, r.h, r.h), colors[style_mod.ColorId.text_idx]);
+        try self.drawIcon(icon_id, math.rect(r.x, r.y, r.h, r.h), colors[style_mod.ColorId.text_idx]);
         r.x += r.h - self.getStyle().padding;
         r.w -= r.h - self.getStyle().padding;
-        self.drawControlText(label.ptr, r, style_mod.COLOR_TEXT, 0);
+        try self.drawControlText(label.ptr, r, style_mod.COLOR_TEXT, 0);
 
         return if (expanded) Res.ACTIVE else 0;
     }
 
     /// Bắt đầu một nút dạng cây (TreeNode).
-    pub fn beginTreenode(self: *MicroUI, name: [:0]const u8) i32 {
+    pub inline fn beginTreenode(self: *MicroUI, name: [:0]const u8) !i32 {
         return self.beginTreenodeEx(name, 0);
     }
 
     /// Bắt đầu nút dạng cây kèm tùy chọn `Opt`.
-    pub fn beginTreenodeEx(self: *MicroUI, label: [:0]const u8, opt: i32) i32 {
-        const res = self.headerInternal(label, true, opt);
+    pub fn beginTreenodeEx(self: *MicroUI, label: [:0]const u8, opt: i32) !i32 {
+        const res = try self.headerInternal(label, true, opt);
         if ((res & Res.ACTIVE) != 0) {
-            self.getLayout().*.indent += self.getStyle().indent;
+            self.getLayout().indent += self.getStyle().indent;
             self.id_stack.push(self.last_id);
         }
         return res;
     }
 
     /// Kết thúc nút dạng cây, thu hồi thụt lề layout.
-    pub fn endTreenode(self: *MicroUI) void {
-        self.getLayout().*.indent -= self.getStyle().indent;
+    pub inline fn endTreenode(self: *MicroUI) void {
+        self.getLayout().indent -= self.getStyle().indent;
         _ = self.id_stack.pop();
     }
 
@@ -1247,18 +931,21 @@ pub const MicroUI = struct {
     // =========================================================================
 
     /// Vẽ nhãn văn bản (Label) một dòng.
-    pub fn drawLabel(self: *MicroUI, label: [:0]const u8) void {
-        self.drawControlText(label.ptr, self.layoutNext(), style_mod.COLOR_TEXT, 0);
+    pub inline fn drawLabel(self: *MicroUI, label: [:0]const u8) !void {
+        try self.drawControlText(label.ptr, self.layoutNext(), style_mod.COLOR_TEXT, 0);
     }
 
     /// Vẽ đoạn văn bản nhiều dòng tự động xuống hàng theo từ (Word Wrapping).
-    pub fn drawText(self: *MicroUI, text: []const u8) void {
+    pub fn drawText(self: *MicroUI, text: []const u8) !void {
         self.layoutBeginColumn();
         defer self.layoutEndColumn();
-        if (text.len == 0) return;
+
+        if (text.len == 0) {
+            return;
+        }
 
         const font = self.getStyle().font;
-        self.layoutRow(&[_]i32{-1}, self.text_height.?(font));
+        self.layout_manager.setRow(&[_]i32{-1}, self.text_height.?(font));
         const color_val = self.getStyle().colors[style_mod.ColorId.text_idx];
 
         var p: usize = 0;
@@ -1291,18 +978,18 @@ pub const MicroUI = struct {
                 }
             }
             if (line_end > line_start) {
-                self.drawTextEx(font, text[line_start..line_end], math.vec2(rect_val.x, rect_val.y), color_val);
+                try self.drawTextEx(font, text[line_start..line_end], math.vec2(rect_val.x, rect_val.y), color_val);
             }
         }
     }
 
     /// Vẽ nút nhấn đơn giản (Button).
-    pub fn button(self: *MicroUI, label: [:0]const u8) i32 {
+    pub inline fn button(self: *MicroUI, label: [:0]const u8) !i32 {
         return self.buttonEx(label, 0, Opt.ALIGNCENTER);
     }
 
     /// Vẽ nút nhấn kèm biểu tượng hoặc tùy chọn căn lề.
-    pub fn buttonEx(self: *MicroUI, label: ?[:0]const u8, icon: i32, opt: i32) i32 {
+    pub fn buttonEx(self: *MicroUI, label: ?[:0]const u8, icon: i32, opt: i32) !i32 {
         var res: i32 = 0;
         const id = if (label) |l|
             self.getId(l.ptr, l.len)
@@ -1310,46 +997,46 @@ pub const MicroUI = struct {
             self.getId(&icon, @sizeOf(i32));
         const r = self.layoutNext();
         self.updateControl(id, r, opt);
-        if (self.mouse_pressed == Mouse.LEFT and self.focus == id) {
+        if (self.mouse_input.isPressed(Mouse.LEFT) and self.focus == id) {
             res |= Res.SUBMIT;
         }
-        self.drawControlFrame(id, r, style_mod.COLOR_BUTTON, opt);
+        try self.drawControlFrame(id, r, style_mod.COLOR_BUTTON, opt);
         if (label) |l| {
-            self.drawControlText(l.ptr, r, style_mod.COLOR_TEXT, opt);
+            try self.drawControlText(l.ptr, r, style_mod.COLOR_TEXT, opt);
         }
         if (icon != 0) {
-            self.drawIcon(icon, r, self.getStyle().colors[style_mod.ColorId.text_idx]);
+            try self.drawIcon(icon, r, self.getStyle().colors[style_mod.ColorId.text_idx]);
         }
         return res;
     }
 
     /// Vẽ hộp kiểm tra (CheckBox).
-    pub fn checkBox(self: *MicroUI, label: [:0]const u8, value: *i32) i32 {
+    pub fn checkBox(self: *MicroUI, label: [:0]const u8, value: *i32) !i32 {
         var res: i32 = 0;
         const id = self.getId(@ptrCast(&value), @sizeOf(*i32));
         const r = self.layoutNext();
         const box = math.rect(r.x, r.y, r.h, r.h);
         self.updateControl(id, r, 0);
-        if (self.mouse_pressed == Mouse.LEFT and self.focus == id) {
+        if (self.mouse_input.isPressed(Mouse.LEFT) and self.focus == id) {
             res |= Res.CHANGE;
             value.* = if (value.* != 0) 0 else 1;
         }
-        self.drawControlFrame(id, box, style_mod.COLOR_BASE, 0);
+        try self.drawControlFrame(id, box, style_mod.COLOR_BASE, 0);
         if (value.* != 0) {
-            self.drawIcon(Icon.CHECK, box, self.getStyle().colors[style_mod.ColorId.text_idx]);
+            try self.drawIcon(Icon.CHECK, box, self.getStyle().colors[style_mod.ColorId.text_idx]);
         }
         const text_rect = math.rect(r.x + box.w, r.y, r.w - box.w, r.h);
-        self.drawControlText(label.ptr, text_rect, style_mod.COLOR_TEXT, 0);
+        try self.drawControlText(label.ptr, text_rect, style_mod.COLOR_TEXT, 0);
         return res;
     }
 
     /// Vẽ ô nhập văn bản (TextBox).
-    pub fn textBox(self: *MicroUI, text: [*c]u8, len: i32) i32 {
+    pub inline fn textBox(self: *MicroUI, text: [*c]u8, len: i32) !i32 {
         return self.textBoxEx(text, len, 0);
     }
 
     /// Vẽ ô nhập văn bản kèm tùy chọn cấu hình `Opt`.
-    pub fn textBoxEx(self: *MicroUI, text: [*c]u8, len: i32, opt: i32) i32 {
+    pub fn textBoxEx(self: *MicroUI, text: [*c]u8, len: i32, opt: i32) !i32 {
         const addr = @intFromPtr(text);
         const id = self.getId(@ptrCast(&addr), @sizeOf(usize));
         const rect_val = self.layoutNext();
@@ -1357,7 +1044,7 @@ pub const MicroUI = struct {
     }
 
     /// Xử lý logic cấp thấp của ô nhập văn bản (con trỏ nhấp nháy, chỉnh sửa UTF-8, Enter submit).
-    pub fn textBoxRaw(self: *MicroUI, buf: [*c]u8, bufsz: i32, id: Id, rect_val: math.Rect, opt: i32) i32 {
+    pub fn textBoxRaw(self: *MicroUI, buf: [*c]u8, bufsz: i32, id: Id, rect_val: math.Rect, opt: i32) !i32 {
         var res: i32 = 0;
         self.updateControl(id, rect_val, opt | Opt.HOLDFOCUS);
 
@@ -1394,7 +1081,7 @@ pub const MicroUI = struct {
         }
 
         // Vẽ widget
-        self.drawControlFrame(id, rect_val, style_mod.COLOR_BASE, opt);
+        try self.drawControlFrame(id, rect_val, style_mod.COLOR_BASE, opt);
         if (self.focus == id) {
             const colors = self.getStyle().colors;
             const color_val = colors[style_mod.ColorId.text_idx];
@@ -1414,19 +1101,19 @@ pub const MicroUI = struct {
             const texty = rect_val.y + @divTrunc(rect_val.h - texth, 2);
 
             self.pushClipRect(rect_val);
-            self.drawTextEx(font, text_span, .{ .x = textx, .y = texty }, color_val);
-            self.drawRect(math.rect(textx + textw, texty, 1, texth), color_val);
+            try self.drawTextEx(font, text_span, .{ .x = textx, .y = texty }, color_val);
+            try self.drawRect(math.rect(textx + textw, texty, 1, texth), color_val);
             _ = self.clip_stack.pop();
         } else {
-            self.drawControlText(buf, rect_val, style_mod.COLOR_TEXT, opt);
+            try self.drawControlText(buf, rect_val, style_mod.COLOR_TEXT, opt);
         }
 
         return res;
     }
 
     /// Hộp nhập số dạng popup khi người dùng Shift + Click chuột trái vào Slider hoặc Number.
-    fn numberTextbox(self: *MicroUI, value: *f32, r: math.Rect, id: Id) bool {
-        if (self.mouse_pressed == Mouse.LEFT and
+    fn numberTextbox(self: *MicroUI, value: *f32, r: math.Rect, id: Id) !bool {
+        if (self.mouse_input.isPressed(Mouse.LEFT) and
             (self.key_down & Key.SHIFT) != 0 and
             self.hover == id)
         {
@@ -1436,7 +1123,7 @@ pub const MicroUI = struct {
             };
         }
         if (self.number_edit == id) {
-            const res = self.textBoxRaw(
+            const res = try self.textBoxRaw(
                 @ptrCast(&self.number_edit_buf),
                 @sizeOf(@TypeOf(self.number_edit_buf)),
                 id,
@@ -1457,12 +1144,12 @@ pub const MicroUI = struct {
     }
 
     /// Thanh trượt giá trị số thực (Slider).
-    pub fn slider(self: *MicroUI, value: *f32, low: f32, high: f32) i32 {
+    pub inline fn slider(self: *MicroUI, value: *f32, low: f32, high: f32) !i32 {
         return self.sliderEx(value, low, high, 0, SLIDER_FMT, Opt.ALIGNCENTER);
     }
 
     /// Thanh trượt kèm bước nhảy (step), chuỗi định dạng (fmt) và tùy chọn `Opt`.
-    pub fn sliderEx(self: *MicroUI, value: *f32, low: f32, high: f32, step: f32, fmt: [*c]const u8, opt: i32) i32 {
+    pub fn sliderEx(self: *MicroUI, value: *f32, low: f32, high: f32, step: f32, fmt: [*c]const u8, opt: i32) !i32 {
         var buf: [MAX_FMT + 1]u8 = undefined;
         var res: i32 = 0;
         const last = value.*;
@@ -1470,17 +1157,15 @@ pub const MicroUI = struct {
         const id = self.getId(@ptrCast(&value), @sizeOf(*f32));
         const base = self.layoutNext();
 
-        if (self.numberTextbox(&v, base, id)) {
+        if (try self.numberTextbox(&v, base, id)) {
             return res;
         }
 
         self.updateControl(id, base, opt);
 
-        if (self.focus == id and
-            ((self.mouse_down | self.mouse_pressed) & Mouse.LEFT) != 0)
-        {
+        if (self.focus == id and self.mouse_input.isDownOrPressed(Mouse.LEFT)) {
             if (base.w > 0) {
-                v = low + @as(f32, @floatFromInt(self.mouse_pos.x - base.x)) * (high - low) / @as(f32, @floatFromInt(base.w));
+                v = low + @as(f32, @floatFromInt(self.mouse_input.pos.x - base.x)) * (high - low) / @as(f32, @floatFromInt(base.w));
                 if (step > 0) {
                     v = @round((v + step / 2.0) / step) * step;
                 }
@@ -1493,7 +1178,7 @@ pub const MicroUI = struct {
             res |= Res.CHANGE;
         }
 
-        self.drawControlFrame(id, base, style_mod.COLOR_BASE, opt);
+        try self.drawControlFrame(id, base, style_mod.COLOR_BASE, opt);
 
         var thumb = base;
         const w = self.getStyle().thumb_size;
@@ -1502,45 +1187,45 @@ pub const MicroUI = struct {
         if (range > 0 and base.w > w) {
             thumb.x += @intFromFloat(@as(f32, @floatFromInt(base.w - w)) * (v - low) / range);
         }
-        self.drawControlFrame(id, thumb, style_mod.COLOR_BUTTON, opt);
+        try self.drawControlFrame(id, thumb, style_mod.COLOR_BUTTON, opt);
 
         const formatted = formatReal(&buf, fmt, value.*);
-        self.drawControlText(formatted.ptr, base, style_mod.COLOR_TEXT, opt);
+        try self.drawControlText(formatted.ptr, base, style_mod.COLOR_TEXT, opt);
 
         return res;
     }
 
     /// Điều khiển chỉnh sửa số thực dạng kéo rê chuột (Number Drag).
-    pub fn number(self: *MicroUI, value: *f32, step: f32) i32 {
+    pub inline fn number(self: *MicroUI, value: *f32, step: f32) !i32 {
         return self.numberEx(value, step, SLIDER_FMT, Opt.ALIGNCENTER);
     }
 
     /// Điều khiển chỉnh sửa số thực kéo rê chuột kèm định dạng và tùy chọn `Opt`.
-    pub fn numberEx(self: *MicroUI, value: *f32, step: f32, fmt: [*c]const u8, opt: i32) i32 {
+    pub fn numberEx(self: *MicroUI, value: *f32, step: f32, fmt: [*c]const u8, opt: i32) !i32 {
         var buf: [MAX_FMT + 1]u8 = undefined;
         var res: i32 = 0;
         const id = self.getId(@ptrCast(&value), @sizeOf(*f32));
         const base = self.layoutNext();
         const last = value.*;
 
-        if (self.numberTextbox(value, base, id)) {
+        if (try self.numberTextbox(value, base, id)) {
             return res;
         }
 
         self.updateControl(id, base, opt);
 
-        if (self.focus == id and (self.mouse_down & Mouse.LEFT) != 0) {
-            value.* += @as(f32, @floatFromInt(self.mouse_delta.x)) * step;
+        if (self.focus == id and self.mouse_input.isDown(Mouse.LEFT)) {
+            value.* += @as(f32, @floatFromInt(self.mouse_input.delta.x)) * step;
         }
 
         if (value.* != last) {
             res |= Res.CHANGE;
         }
 
-        self.drawControlFrame(id, base, style_mod.COLOR_BASE, opt);
+        try self.drawControlFrame(id, base, style_mod.COLOR_BASE, opt);
 
         const formatted = formatReal(&buf, fmt, value.*);
-        self.drawControlText(formatted.ptr, base, style_mod.COLOR_TEXT, opt);
+        try self.drawControlText(formatted.ptr, base, style_mod.COLOR_TEXT, opt);
 
         return res;
     }

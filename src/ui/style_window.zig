@@ -2,7 +2,7 @@ const MicroUI = @import("../microui/microui.zig").MicroUI;
 const uint8Slider = @import("../microui/slider.zig").uint8Slider;
 
 pub fn styleWindow(microui: *MicroUI) !void {
-    if (!microui.beginWindow("Style Editor", MicroUI.Rect.init(350, 250, 300, 240))) return;
+    if (!(try microui.beginWindow("Style Editor", MicroUI.Rect.init(350, 250, 300, 240)))) return;
     defer microui.endWindow();
 
     const ColorSlider = struct {
@@ -27,17 +27,17 @@ pub fn styleWindow(microui: *MicroUI) !void {
         .{ .label = "scrollthumb", .idx = MicroUI.ColorId.scroll_thumb_idx },
     };
 
-    const size_width: i32 =
-        @intFromFloat(@as(f32, @floatFromInt(microui.getCurrentContainer().*.body.w)) * 0.14);
-    microui.layoutRow(&[_]i32{ 80, size_width, size_width, size_width, size_width, -1 }, 0);
+    const body_w = microui.getCurrentContainer().body.w;
+    const size_width: i32 = @intFromFloat(@as(f32, @floatFromInt(body_w)) * 0.14);
+    microui.setLayoutRow(&[_]i32{ 80, size_width, size_width, size_width, size_width, -1 }, 0);
 
     const style_ptr = microui.getStyle();
     for (colors) |color| {
-        microui.drawLabel(color.label);
-        _ = uint8Slider(microui, &style_ptr.colors[color.idx].r, 0, 255);
-        _ = uint8Slider(microui, &style_ptr.colors[color.idx].g, 0, 255);
-        _ = uint8Slider(microui, &style_ptr.colors[color.idx].b, 0, 255);
-        _ = uint8Slider(microui, &style_ptr.colors[color.idx].a, 0, 255);
-        microui.drawRect(microui.layoutNext(), style_ptr.colors[color.idx]);
+        try microui.drawLabel(color.label);
+        _ = try uint8Slider(microui, &style_ptr.colors[color.idx].r, 0, 255);
+        _ = try uint8Slider(microui, &style_ptr.colors[color.idx].g, 0, 255);
+        _ = try uint8Slider(microui, &style_ptr.colors[color.idx].b, 0, 255);
+        _ = try uint8Slider(microui, &style_ptr.colors[color.idx].a, 0, 255);
+        try microui.drawRect(microui.layoutNext(), style_ptr.colors[color.idx]);
     }
 }

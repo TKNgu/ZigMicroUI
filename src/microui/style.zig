@@ -17,12 +17,12 @@ pub const Color = extern struct {
     a: u8 = 255,
 
     /// Khởi tạo màu với đầy đủ các kênh R, G, B, A.
-    pub fn init(r: u8, g: u8, b: u8, a: u8) Color {
+    pub inline fn init(r: u8, g: u8, b: u8, a: u8) Color {
         return .{ .r = r, .g = g, .b = b, .a = a };
     }
 
     /// Khởi tạo màu RGB với độ mờ mặc định (alpha = 255).
-    pub fn rgb(r: u8, g: u8, b: u8) Color {
+    pub inline fn rgb(r: u8, g: u8, b: u8) Color {
         return .{ .r = r, .g = g, .b = b, .a = 255 };
     }
 };
@@ -65,11 +65,11 @@ pub const ColorId = enum(i32) {
     pub const scroll_base_idx: usize = 12;
     pub const scroll_thumb_idx: usize = 13;
 
-    pub fn toInt(self: ColorId) i32 {
+    pub inline fn toInt(self: ColorId) i32 {
         return @intFromEnum(self);
     }
 
-    pub fn toIndex(self: ColorId) usize {
+    pub inline fn toIndex(self: ColorId) usize {
         return @intCast(@intFromEnum(self));
     }
 };
@@ -121,12 +121,12 @@ pub const Style = extern struct {
     colors: [ColorId.count]Color = default_colors,
 
     /// Lấy màu tương ứng với ColorId.
-    pub fn getColor(self: *const Style, id: ColorId) Color {
+    pub inline fn getColor(self: *const Style, id: ColorId) Color {
         return self.colors[id.toIndex()];
     }
 
     /// Thiết lập màu tương ứng với ColorId.
-    pub fn setColor(self: *Style, id: ColorId, c: Color) void {
+    pub inline fn setColor(self: *Style, id: ColorId, c: Color) void {
         self.colors[id.toIndex()] = c;
     }
 };

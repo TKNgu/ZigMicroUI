@@ -2,7 +2,6 @@ const std = @import("std");
 const graphic = @import("graphic");
 const sdl = graphic.sdl;
 const render = graphic.render;
-const style = @import("style.zig");
 const math = graphic.math;
 const microui_mod = @import("microui/microui.zig");
 const MicroUI = microui_mod.MicroUI;
@@ -11,6 +10,8 @@ const LogBuf = @import("ui/log_window.zig").LogBuf;
 const logWindow = @import("ui/log_window.zig").logWindow;
 const testWindow = @import("ui/test_window.zig").testWindow;
 const command_mod = @import("microui/command.zig");
+
+const ZMicroUI = @import("microui/zmicroui.zig").ZMicroUI;
 
 extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 
@@ -53,6 +54,7 @@ pub fn main(init: std.process.Init) !void {
 
     // Init SDL
     graphic.initSDL() catch |err| {
+        std.log.err("Failed to initialize SDL subsystem: {s}", .{@errorName(err)});
         return err;
     };
     defer graphic.deinitSDL();
@@ -69,12 +71,15 @@ pub fn main(init: std.process.Init) !void {
         &windowOption,
         &renderOption,
     )) {
+        std.log.err("SDL_CreateWindowAndRenderer failed: {s}", .{sdl.SDL_GetError()});
         return error.SDLCreateWindowAndRendererFailed;
     }
 
     const window = windowOption.?;
     defer sdl.SDL_DestroyWindow(window);
-    _ = sdl.SDL_StartTextInput(window);
+    if (!sdl.SDL_StartTextInput(window)) {
+        std.log.warn("SDL_StartTextInput failed: {s}", .{sdl.SDL_GetError()});
+    }
     defer _ = sdl.SDL_StopTextInput(window);
 
     const renderer = renderOption.?;
@@ -90,13 +95,16 @@ pub fn main(init: std.process.Init) !void {
         .b = 230,
         .a = 255,
     };
-    render_engine = try render.RenderEngine.init(
+    render_engine = render.RenderEngine.init(
         allocator,
         &z_render,
         "data/JetBrainsMono-Bold.ttf",
         16,
         text_color,
-    );
+    ) catch |err| {
+        std.log.err("Failed to initialize RenderEngine: {s}", .{@errorName(err)});
+        return err;
+    };
     defer render_engine.deinit();
 
     // Init microui
@@ -113,8 +121,14 @@ pub fn main(init: std.process.Init) !void {
     key_map[sdl.SDLK_RETURN & 0xff] = microui_mod.Key.RETURN;
     key_map[sdl.SDLK_BACKSPACE & 0xff] = microui_mod.Key.BACKSPACE;
 
-    var microui = try MicroUI.init(allocator, textWidth, textHeight);
+    var microui = MicroUI.init(allocator, textWidth, textHeight) catch |err| {
+        std.log.err("Failed to initialize MicroUI: {s}", .{@errorName(err)});
+        return err;
+    };
     defer microui.deinit(allocator);
+
+    var zmicroui = try ZMicroUI.init(allocator);
+    defer zmicroui.deinit(allocator);
 
     // Main loop
     var is_running = true;
@@ -163,7 +177,10 @@ pub fn main(init: std.process.Init) !void {
             }
         }
 
-        try processFrame(&microui);
+        processFrame(&microui) catch |err| {
+            std.log.err("processFrame failed: {s}", .{@errorName(err)});
+            break;
+        };
 
         if (!sdl.SDL_SetRenderDrawColor(
             renderer,
@@ -172,72 +189,128 @@ pub fn main(init: std.process.Init) !void {
             @as(u8, @intFromFloat(bg[2])),
             255,
         )) {
-            is_running = false;
-            continue;
+            std.log.err("SDL_SetRenderDrawColor failed: {s}", .{sdl.SDL_GetError()});
+            break;
         }
         if (!sdl.SDL_RenderClear(renderer)) {
-            is_running = false;
-            continue;
+            std.log.err("SDL_RenderClear failed: {s}", .{sdl.SDL_GetError()});
+            break;
         }
 
-        var count: usize = 0;
         var cmd: ?*command_mod.Command = null;
         while (microui.nextCommand(&cmd)) {
             if (cmd) |c| {
-                count += 1;
-                switch (c.*.type) {
+                switch (c.type) {
                     .text => {
-                        const s = cmd.?.text.getSlice();
-                        const rect = cmd.?.text.pos;
-                        render_engine.drawText(s, math.vec.Vec2(f32).init(
-                            @as(f32, @floatFromInt(rect.x)),
-                            @as(f32, @floatFromInt(rect.y)),
-                        )) catch {};
+                        const text_cmd = &c.text;
+                        render_engine.drawText(text_cmd.getSlice(), math.vec.Vec2(f32).init(
+                            @as(f32, @floatFromInt(text_cmd.pos.x)),
+                            @as(f32, @floatFromInt(text_cmd.pos.y)),
+                        )) catch |err| {
+                            std.log.warn("drawText failed: {s}", .{@errorName(err)});
+                        };
                     },
                     .rect => {
-                        const rect = cmd.?.rect;
-                        const color = cmd.?.rect.color;
+                        const r = c.rect.rect;
+                        const color = c.rect.color;
                         render_engine.fillRect(math.rect.Rect2(f32).init(
-                            @as(f32, @floatFromInt(rect.rect.x)),
-                            @as(f32, @floatFromInt(rect.rect.y)),
-                            @as(f32, @floatFromInt(rect.rect.w)),
-                            @as(f32, @floatFromInt(rect.rect.h)),
+                            @as(f32, @floatFromInt(r.x)),
+                            @as(f32, @floatFromInt(r.y)),
+                            @as(f32, @floatFromInt(r.w)),
+                            @as(f32, @floatFromInt(r.h)),
                         ), .{
                             .r = color.r,
                             .g = color.g,
                             .b = color.b,
                             .a = color.a,
-                        }) catch {};
+                        }) catch |err| {
+                            std.log.warn("fillRect failed: {s}", .{@errorName(err)});
+                        };
                     },
                     .icon => {
-                        const rect = cmd.?.icon.rect;
-                        const id: usize = @intCast(cmd.?.icon.id);
+                        const r = c.icon.rect;
+                        const id: usize = @intCast(c.icon.id);
                         render_engine.drawIcon(id, math.rect.Rect2(f32).init(
-                            @as(f32, @floatFromInt(rect.x)),
-                            @as(f32, @floatFromInt(rect.y)),
-                            @as(f32, @floatFromInt(rect.w)),
-                            @as(f32, @floatFromInt(rect.h)),
-                        )) catch {};
+                            @as(f32, @floatFromInt(r.x)),
+                            @as(f32, @floatFromInt(r.y)),
+                            @as(f32, @floatFromInt(r.w)),
+                            @as(f32, @floatFromInt(r.h)),
+                        )) catch |err| {
+                            std.log.warn("drawIcon failed: {s}", .{@errorName(err)});
+                        };
                     },
                     .clip => {
-                        const rect = cmd.?.clip.rect;
+                        const r = c.clip.rect;
                         _ = z_render.clip(math.rect.Rect2(f32).init(
-                            @as(f32, @floatFromInt(rect.x)),
-                            @as(f32, @floatFromInt(rect.y)),
-                            @as(f32, @floatFromInt(rect.w)),
-                            @as(f32, @floatFromInt(rect.h)),
+                            @as(f32, @floatFromInt(r.x)),
+                            @as(f32, @floatFromInt(r.y)),
+                            @as(f32, @floatFromInt(r.w)),
+                            @as(f32, @floatFromInt(r.h)),
                         ));
                     },
-                    else => {
-                        std.debug.print("Else\n", .{});
-                    },
+                    else => {},
                 }
             }
         }
 
+        // while (zmicroui.nextCommand(&cmd)) {
+        //     if (cmd) |c| {
+        //         switch (c.type) {
+        //             .text => {
+        //                 const text_cmd = &c.text;
+        //                 render_engine.drawText(text_cmd.getSlice(), math.vec.Vec2(f32).init(
+        //                     @as(f32, @floatFromInt(text_cmd.pos.x)),
+        //                     @as(f32, @floatFromInt(text_cmd.pos.y)),
+        //                 )) catch |err| {
+        //                     std.log.warn("drawText failed: {s}", .{@errorName(err)});
+        //                 };
+        //             },
+        //             .rect => {
+        //                 const r = c.rect.rect;
+        //                 const color = c.rect.color;
+        //                 render_engine.fillRect(math.rect.Rect2(f32).init(
+        //                     @as(f32, @floatFromInt(r.x)),
+        //                     @as(f32, @floatFromInt(r.y)),
+        //                     @as(f32, @floatFromInt(r.w)),
+        //                     @as(f32, @floatFromInt(r.h)),
+        //                 ), .{
+        //                     .r = color.r,
+        //                     .g = color.g,
+        //                     .b = color.b,
+        //                     .a = color.a,
+        //                 }) catch |err| {
+        //                     std.log.warn("fillRect failed: {s}", .{@errorName(err)});
+        //                 };
+        //             },
+        //             .icon => {
+        //                 const r = c.icon.rect;
+        //                 const id: usize = @intCast(c.icon.id);
+        //                 render_engine.drawIcon(id, math.rect.Rect2(f32).init(
+        //                     @as(f32, @floatFromInt(r.x)),
+        //                     @as(f32, @floatFromInt(r.y)),
+        //                     @as(f32, @floatFromInt(r.w)),
+        //                     @as(f32, @floatFromInt(r.h)),
+        //                 )) catch |err| {
+        //                     std.log.warn("drawIcon failed: {s}", .{@errorName(err)});
+        //                 };
+        //             },
+        //             .clip => {
+        //                 const r = c.clip.rect;
+        //                 _ = z_render.clip(math.rect.Rect2(f32).init(
+        //                     @as(f32, @floatFromInt(r.x)),
+        //                     @as(f32, @floatFromInt(r.y)),
+        //                     @as(f32, @floatFromInt(r.w)),
+        //                     @as(f32, @floatFromInt(r.h)),
+        //                 ));
+        //             },
+        //             else => {},
+        //         }
+        //     }
+        // }
+
         if (!sdl.SDL_RenderPresent(renderer)) {
-            is_running = false;
-            continue;
+            std.log.err("SDL_RenderPresent failed: {s}", .{sdl.SDL_GetError()});
+            break;
         }
 
         sdl.SDL_Delay(16);

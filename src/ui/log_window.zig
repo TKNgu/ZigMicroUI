@@ -25,32 +25,32 @@ pub const LogBuf = struct {
 var log_input_buf: [128:0]u8 = [_:0]u8{0} ** 128;
 
 pub fn logWindow(microui: *MicroUI, logbuf: *LogBuf) !void {
-    if (!microui.beginWindow("Log Window", MicroUI.Rect.init(350, 40, 300, 200))) return;
+    if (!(try microui.beginWindow("Log Window", MicroUI.Rect.init(350, 40, 300, 200)))) return;
     defer microui.endWindow();
 
-    microui.layoutRow(&[_]i32{-1}, -25);
+    microui.setLayoutRow(&[_]i32{-1}, -25);
     {
-        microui.beginPanel("Log Output");
+        try microui.beginPanel("Log Output");
         defer microui.endPanel();
 
         const panel = microui.getCurrentContainer();
         if (logbuf.updated) {
-            panel.*.scroll.y = panel.*.content_size.y;
+            panel.scroll.y = panel.content_size.y;
             logbuf.updated = false;
         }
 
-        microui.layoutRow(&[_]i32{-1}, -1);
-        microui.drawText(std.mem.sliceTo(&logbuf.buf, 0));
+        microui.setLayoutRow(&[_]i32{-1}, -1);
+        try microui.drawText(std.mem.sliceTo(&logbuf.buf, 0));
     }
 
     var submitted: i32 = 0;
-    microui.layoutRow(&[_]i32{ -70, -1 }, 0);
-    if (microui.textBox(&log_input_buf, 128) & microui_mod.Res.SUBMIT != 0) {
+    microui.setLayoutRow(&[_]i32{ -70, -1 }, 0);
+    if ((try microui.textBox(&log_input_buf, 128)) & microui_mod.Res.SUBMIT != 0) {
         const addr = @intFromPtr(&log_input_buf);
         microui.setFocus(microui.getId(@ptrCast(&addr), @sizeOf(usize)));
         submitted = 1;
     }
-    if (microui.button("Submit") != 0) {
+    if ((try microui.button("Submit")) != 0) {
         submitted = 1;
     }
     if (submitted != 0) {
