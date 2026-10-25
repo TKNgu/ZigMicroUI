@@ -11,12 +11,10 @@ const logWindow = @import("ui/log_window.zig").logWindow;
 const testWindow = @import("ui/test_window.zig").testWindow;
 const command_mod = @import("microui/command.zig");
 
-const ZMicroUI = @import("microui/zmicroui.zig").ZMicroUI;
-
 extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 
-var button_map: [256]u8 = [_]u8{0} ** 256;
-var key_map: [256]u8 = [_]u8{0} ** 256;
+var button_map: [256]microui_mod.Mouse = [_]microui_mod.Mouse{.none} ** 256;
+var key_map: [256]microui_mod.Key = [_]microui_mod.Key{.none} ** 256;
 var logbuf = LogBuf.init();
 var bg: [3]f32 = .{ 90, 95, 100 };
 var checks: [3]i32 = [_]i32{ 1, 0, 1 };
@@ -108,27 +106,24 @@ pub fn main(init: std.process.Init) !void {
     defer render_engine.deinit();
 
     // Init microui
-    button_map[sdl.SDL_BUTTON_LEFT & 0xff] = microui_mod.Mouse.LEFT;
-    button_map[sdl.SDL_BUTTON_RIGHT & 0xff] = microui_mod.Mouse.RIGHT;
-    button_map[sdl.SDL_BUTTON_MIDDLE & 0xff] = microui_mod.Mouse.MIDDLE;
+    button_map[sdl.SDL_BUTTON_LEFT & 0xff] = .left;
+    button_map[sdl.SDL_BUTTON_RIGHT & 0xff] = .right;
+    button_map[sdl.SDL_BUTTON_MIDDLE & 0xff] = .middle;
 
-    key_map[sdl.SDLK_LSHIFT & 0xff] = microui_mod.Key.SHIFT;
-    key_map[sdl.SDLK_RSHIFT & 0xff] = microui_mod.Key.SHIFT;
-    key_map[sdl.SDLK_LCTRL & 0xff] = microui_mod.Key.CTRL;
-    key_map[sdl.SDLK_RCTRL & 0xff] = microui_mod.Key.CTRL;
-    key_map[sdl.SDLK_LALT & 0xff] = microui_mod.Key.ALT;
-    key_map[sdl.SDLK_RALT & 0xff] = microui_mod.Key.ALT;
-    key_map[sdl.SDLK_RETURN & 0xff] = microui_mod.Key.RETURN;
-    key_map[sdl.SDLK_BACKSPACE & 0xff] = microui_mod.Key.BACKSPACE;
+    key_map[sdl.SDLK_LSHIFT & 0xff] = .shift;
+    key_map[sdl.SDLK_RSHIFT & 0xff] = .shift;
+    key_map[sdl.SDLK_LCTRL & 0xff] = .ctrl;
+    key_map[sdl.SDLK_RCTRL & 0xff] = .ctrl;
+    key_map[sdl.SDLK_LALT & 0xff] = .alt;
+    key_map[sdl.SDLK_RALT & 0xff] = .alt;
+    key_map[sdl.SDLK_RETURN & 0xff] = .@"return";
+    key_map[sdl.SDLK_BACKSPACE & 0xff] = .backspace;
 
     var microui = MicroUI.init(allocator, textWidth, textHeight) catch |err| {
         std.log.err("Failed to initialize MicroUI: {s}", .{@errorName(err)});
         return err;
     };
     defer microui.deinit(allocator);
-
-    var zmicroui = try ZMicroUI.init(allocator);
-    defer zmicroui.deinit(allocator);
 
     // Main loop
     var is_running = true;
@@ -148,14 +143,14 @@ pub fn main(init: std.process.Init) !void {
                 sdl.SDL_EVENT_TEXT_INPUT => microui.inputText(event.text.text),
                 sdl.SDL_EVENT_MOUSE_BUTTON_DOWN, sdl.SDL_EVENT_MOUSE_BUTTON_UP => {
                     const btn = button_map[event.button.button & 0xff];
-                    if (btn != 0 and event.type == sdl.SDL_EVENT_MOUSE_BUTTON_DOWN) {
+                    if (btn != .none and event.type == sdl.SDL_EVENT_MOUSE_BUTTON_DOWN) {
                         microui.inputMousedown(
                             @as(c_int, @intFromFloat(event.button.x)),
                             @as(c_int, @intFromFloat(event.button.y)),
                             btn,
                         );
                     }
-                    if (btn != 0 and event.type == sdl.SDL_EVENT_MOUSE_BUTTON_UP) {
+                    if (btn != .none and event.type == sdl.SDL_EVENT_MOUSE_BUTTON_UP) {
                         microui.inputMouseup(
                             @as(c_int, @intFromFloat(event.button.x)),
                             @as(c_int, @intFromFloat(event.button.y)),
@@ -166,10 +161,10 @@ pub fn main(init: std.process.Init) !void {
                 sdl.SDL_EVENT_KEY_DOWN, sdl.SDL_EVENT_KEY_UP => {
                     const index = event.key.key & 0xff;
                     const key = key_map[@as(usize, @intCast(index))];
-                    if (key != 0 and event.type == sdl.SDL_EVENT_KEY_DOWN) {
+                    if (key != .none and event.type == sdl.SDL_EVENT_KEY_DOWN) {
                         microui.inputKeydown(key);
                     }
-                    if (key != 0 and event.type == sdl.SDL_EVENT_KEY_UP) {
+                    if (key != .none and event.type == sdl.SDL_EVENT_KEY_UP) {
                         microui.inputKeyup(key);
                     }
                 },
@@ -229,7 +224,7 @@ pub fn main(init: std.process.Init) !void {
                     },
                     .icon => {
                         const r = c.icon.rect;
-                        const id: usize = @intCast(c.icon.id);
+                        const id: usize = @intCast(@intFromEnum(c.icon.icon));
                         render_engine.drawIcon(id, math.rect.Rect2(f32).init(
                             @as(f32, @floatFromInt(r.x)),
                             @as(f32, @floatFromInt(r.y)),

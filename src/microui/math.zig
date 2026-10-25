@@ -1,37 +1,44 @@
-//! MicroUI Math Module
-//!
-//! Cung cấp các cấu trúc hình học cơ bản (Vec2, Rect) và các hàm toán học
-//! phục vụ tính toán layout, clipping và hit-testing trong hệ thống UI.
-
-/// Vector 2 chiều đại diện cho toạ độ điểm (x, y) hoặc kích thước (width, height) kiểu số nguyên i32.
 pub const Vec2 = extern struct {
-    x: i32 = 0,
-    y: i32 = 0,
+    pub const zero: Vec2 = .{ .x = 0, .y = 0 };
 
-    /// Khởi tạo Vec2 với toạ độ x, y.
+    x: i32,
+    y: i32,
+
     pub inline fn init(x: i32, y: i32) Vec2 {
         return .{ .x = x, .y = y };
     }
+
+    pub inline fn add(self: *Vec2, v: Vec2) void {
+        self.x += v.x;
+        self.y += v.y;
+    }
+
+    pub inline fn sub(self: *Vec2, v: Vec2) void {
+        self.x -= v.x;
+        self.y -= v.y;
+    }
+
+    pub inline fn addVec2(a: Vec2, b: Vec2) Vec2 {
+        return .{ .x = a.x + b.x, .y = a.y + b.y };
+    }
+
+    pub inline fn subVec2(a: Vec2, b: Vec2) Vec2 {
+        return .{ .x = a.x - b.x, .y = a.y - b.y };
+    }
 };
 
-/// Hàm tiện ích tạo nhanh Vec2.
-pub inline fn vec2(x: i32, y: i32) Vec2 {
-    return Vec2.init(x, y);
-}
-
-/// Hình chữ nhật đại diện cho vị trí (x, y) và kích thước (w, h) của một thành phần UI.
 pub const Rect = extern struct {
-    x: i32 = 0,
-    y: i32 = 0,
-    w: i32 = 0,
-    h: i32 = 0,
+    pub const zero: Rect = .{ .x = 0, .y = 0, .w = 0, .h = 0 };
 
-    /// Khởi tạo Rect với toạ độ và kích thước cụ thể.
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+
     pub inline fn init(x: i32, y: i32, w: i32, h: i32) Rect {
         return .{ .x = x, .y = y, .w = w, .h = h };
     }
 
-    /// Mở rộng hình chữ nhật về cả 4 phía một khoảng `n` pixel.
     pub inline fn expand(self: Rect, n: i32) Rect {
         return .{
             .x = self.x - n,
@@ -41,7 +48,6 @@ pub const Rect = extern struct {
         };
     }
 
-    /// Tính phần giao nhau giữa 2 hình chữ nhật (dùng trong tính toán vùng cắt clip).
     pub inline fn intersect(r1: Rect, r2: Rect) Rect {
         const x1 = @max(r1.x, r2.x);
         const y1 = @max(r1.y, r2.y);
@@ -54,14 +60,12 @@ pub const Rect = extern struct {
         }
     }
 
-    /// Kiểm tra toạ độ điểm `p` có nằm bên trong hình chữ nhật hay không.
     pub inline fn contains(self: Rect, p: Vec2) bool {
         return p.x >= self.x and p.x < self.x + self.w and p.y >= self.y and p.y < self.y + self.h;
     }
-    pub const overlapsVec2 = contains;
-};
 
-/// Hàm tiện ích tạo nhanh Rect.
-pub inline fn rect(x: i32, y: i32, w: i32, h: i32) Rect {
-    return Rect.init(x, y, w, h);
-}
+    pub inline fn move(self: *Rect, v: Vec2) void {
+        self.x += v.x;
+        self.y += v.y;
+    }
+};

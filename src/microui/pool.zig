@@ -1,60 +1,7 @@
 const std = @import("std");
-const types = @import("types.zig");
-pub const Id = types.Id;
+pub const Id = @import("types.zig").Id;
 
-pub const PoolItem = struct {
-    id: Id = 0,
-    last_update: i32 = 0,
-};
-
-pub fn Pool(comptime size: usize) type {
-    return struct {
-        const Self = @This();
-
-        items: [size]PoolItem = [_]PoolItem{.{}} ** size,
-
-        pub fn getIdToIndex(self: *const Self, id: Id) ?usize {
-            for (self.items, 0..) |item, i| {
-                if (item.id == id) {
-                    return i;
-                }
-            }
-            return null;
-        }
-
-        pub inline fn update(self: *Self, index: usize, frame: i32) void {
-            self.items[index].last_update = frame;
-        }
-
-        pub fn alloc(self: *Self, id: Id, frame: i32) usize {
-            for (&self.items, 0..) |*item, i| {
-                if (item.id == 0) {
-                    item.id = id;
-                    item.last_update = frame;
-                    return i;
-                }
-            }
-
-            var oldest: i32 = std.math.maxInt(i32);
-            var selected: usize = 0;
-            for (self.items, 0..) |item, i| {
-                if (item.last_update < oldest) {
-                    oldest = item.last_update;
-                    selected = i;
-                }
-            }
-            self.items[selected].id = id;
-            self.items[selected].last_update = frame;
-            return selected;
-        }
-
-        pub inline fn reset(self: *Self, index: usize) void {
-            self.items[index] = .{};
-        }
-    };
-}
-
-pub fn PoolItem2(comptime T: type) type {
+pub fn PoolItem(comptime T: type) type {
     return struct {
         const Self = @This();
 
@@ -62,10 +9,10 @@ pub fn PoolItem2(comptime T: type) type {
         id: Id = 0,
         last_update: i32 = 0,
 
-        pub inline fn init(id: Id, data: T, frame: i32) Self {
+        pub inline fn init(data: T, id: Id, frame: i32) Self {
             return .{
-                .id = id,
                 .data = data,
+                .id = id,
                 .last_update = frame,
             };
         }
@@ -73,16 +20,20 @@ pub fn PoolItem2(comptime T: type) type {
         pub inline fn refresh(self: *Self, frame: i32) void {
             self.last_update = frame;
         }
+
+        pub inline fn reset(self: *Self) void {
+            self.id = 0;
+        }
     };
 }
 
-pub fn Pool2(comptime T: type, comptime size: usize) type {
+pub fn Pool(comptime T: type, comptime size: usize) type {
     return struct {
         const Self = @This();
 
-        items: [size]PoolItem2(T) = [_]PoolItem2(T){.{ .data = .{} }} ** size,
+        items: [size]PoolItem(T) = [_]PoolItem(T){.{ .data = .{} }} ** size,
 
-        pub fn get(self: *Self, id: Id) ?*PoolItem2(T) {
+        pub fn get(self: *Self, id: Id) ?*PoolItem(T) {
             for (&self.items) |*item| {
                 if (item.id == id) {
                     return item;
@@ -91,7 +42,7 @@ pub fn Pool2(comptime T: type, comptime size: usize) type {
             return null;
         }
 
-        pub fn alloc(self: *Self) *PoolItem2(T) {
+        pub fn alloc(self: *Self) *PoolItem(T) {
             for (&self.items) |*item| {
                 if (item.id == 0) {
                     return item;
@@ -108,6 +59,12 @@ pub fn Pool2(comptime T: type, comptime size: usize) type {
             }
 
             return &self.items[selected];
+        }
+
+        pub fn allocAndInit(self: *Self, data: T, id: Id, frame: i32) *PoolItem(T) {
+            const item = self.alloc();
+            item.* = .init(data, id, frame);
+            return item;
         }
     };
 }

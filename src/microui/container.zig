@@ -2,42 +2,44 @@ const std = @import("std");
 const math = @import("math.zig");
 const command = @import("command.zig");
 const stack = @import("stack.zig");
-const Pool2 = @import("pool.zig").Pool2;
-const types = @import("types.zig");
 
-pub const Id = types.Id;
-pub const Opt = types.Opt;
+const types = @import("types.zig");
+const Id = types.Id;
+const Opt = types.Opt;
+
+const Pool = @import("pool.zig").Pool;
 
 pub const Container = struct {
     head: ?*command.Command = null,
     tail: ?*command.Command = null,
-    rect: math.Rect = .{},
-    body: math.Rect = .{},
-    content_size: math.Vec2 = .{},
-    scroll: math.Vec2 = .{},
+    rect: math.Rect = .zero,
+    body: math.Rect = .zero,
+    content_size: math.Vec2 = .zero,
+    scroll: math.Vec2 = .zero,
     zindex: i32 = 0,
-    open: i32 = 0,
+    is_open: bool = false,
 
     pub inline fn isRoot(self: *const Container) bool {
         return self.head != null;
     }
+
+    fn updateScroll(self: *Container, scroll_delta: math.Vec2) void {
+        self.scroll.add(scroll_delta);
+    }
+
+    fn compareContainersByZIndex(_: void, a: *Container, b: *Container) bool {
+        return a.zindex < b.zindex;
+    }
 };
 
-fn compareContainersByZIndex(_: void, a: *Container, b: *Container) bool {
-    return a.zindex < b.zindex;
-}
-
 pub const ContainerManager = struct {
-    containers: Pool2(Container, 48) = .{},
-
-    last_zindex: i32 = 0,
-    root_containers: stack.Stack(*Container, 48) = .{},
-
+    containers: Pool(Container, 48) = .{},
+    container_stack: stack.Stack(*Container, 32) = .{},
+    root_containers: stack.List(*Container, 48) = .{},
     scroll_target: ?*Container = null,
     hover_root: ?*Container = null,
     next_hover_root: ?*Container = null,
-
-    container_stack: stack.Stack(*Container, 32) = .{},
+    last_zindex: i32 = 0,
 
     pub inline fn begin(self: *ContainerManager) void {
         self.root_containers.clear();
@@ -49,17 +51,16 @@ pub const ContainerManager = struct {
     pub fn getOrAlloc(self: *ContainerManager, id: Id, opt: i32, frame: i32) ?*Container {
         if (self.containers.get(id)) |item| {
             const cnt = &item.data;
-            if (cnt.open != 0 or (opt & Opt.CLOSED) == 0) {
+            if (cnt.is_open or !Opt.has(opt, .closed)) {
                 item.refresh(frame);
             }
             return cnt;
         }
-        if (opt & Opt.CLOSED != 0) {
+        if (Opt.has(opt, .closed)) {
             return null;
         }
 
-        const item = self.containers.alloc();
-        item.* = .init(id, .{ .open = 1 }, frame);
+        const item = self.containers.allocAndInit(.{ .is_open = true }, id, frame);
         const cnt = &item.data;
         self.bringToFront(cnt);
         return cnt;
@@ -71,7 +72,7 @@ pub const ContainerManager = struct {
 
     pub inline fn pushRoot(self: *ContainerManager, cnt: *Container) void {
         self.push(cnt);
-        self.root_containers.push(cnt);
+        self.root_containers.append(cnt);
     }
 
     pub inline fn getCurrent(self: *ContainerManager) *Container {
@@ -96,9 +97,8 @@ pub const ContainerManager = struct {
     }
 
     pub fn updateScroll(self: *ContainerManager, scroll_delta: math.Vec2) void {
-        const st = self.scroll_target orelse return;
-        st.scroll.x += scroll_delta.x;
-        st.scroll.y += scroll_delta.y;
+        const cnt = self.scroll_target orelse return;
+        cnt.updateScroll(scroll_delta);
     }
 
     pub fn setPopup(self: *ContainerManager, cnt: *Container) void {
@@ -123,9 +123,8 @@ pub const ContainerManager = struct {
     pub fn isActiveContainer(self: *ContainerManager) bool {
         const hover_root = self.hover_root orelse return false;
         const items = self.container_stack.slice();
-        var i = items.len;
-        while (i > 0) {
-            i -= 1;
+        var i = items.len - 1;
+        while (i >= 0) : (i -= 1) {
             const cnt = items[i];
             if (cnt == hover_root) {
                 return true;
@@ -142,7 +141,7 @@ pub const ContainerManager = struct {
         if (roots.len == 0) {
             return;
         }
-        std.mem.sort(*Container, roots, {}, compareContainersByZIndex);
+        std.mem.sort(*Container, roots, {}, Container.compareContainersByZIndex);
 
         for (roots) |cnt| {
             if (cnt.head != null and cnt.tail != null) {

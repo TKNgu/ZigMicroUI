@@ -13,98 +13,102 @@ pub const MAX_FMT: usize = 127;
 pub const SLIDER_FMT = "%.2f";
 
 /// Cắt khung hiển thị (Clipping).
-pub const Clip = struct {
-    pub const PART: i32 = 1;
-    pub const ALL: i32 = 2;
+pub const Clip = enum(i32) {
+    none = 0,
+    part = 1,
+    all = 2,
+
+    pub inline fn toInt(self: Clip) i32 {
+        return @intFromEnum(self);
+    }
 };
 
 /// Tùy chọn cấu hình cho Cửa sổ (Window), Bảng (Panel) và Widget.
-pub const Opt = struct {
-    pub const ALIGNCENTER: i32 = (1 << 0);
-    pub const ALIGNRIGHT: i32 = (1 << 1);
-    pub const NOINTERACT: i32 = (1 << 2);
-    pub const NOFRAME: i32 = (1 << 3);
-    pub const NORESIZE: i32 = (1 << 4);
-    pub const NOSCROLL: i32 = (1 << 5);
-    pub const NOCLOSE: i32 = (1 << 6);
-    pub const NOTITLE: i32 = (1 << 7);
-    pub const HOLDFOCUS: i32 = (1 << 8);
-    pub const AUTOSIZE: i32 = (1 << 9);
-    pub const POPUP: i32 = (1 << 10);
-    pub const CLOSED: i32 = (1 << 11);
-    pub const EXPANDED: i32 = (1 << 12);
+pub const Opt = enum(i32) {
+    none = 0,
+    align_center = (1 << 0),
+    align_right = (1 << 1),
+    no_interact = (1 << 2),
+    no_frame = (1 << 3),
+    no_resize = (1 << 4),
+    no_scroll = (1 << 5),
+    no_close = (1 << 6),
+    no_title = (1 << 7),
+    hold_focus = (1 << 8),
+    auto_size = (1 << 9),
+    popup = (1 << 10),
+    closed = (1 << 11),
+    expanded = (1 << 12),
+
+    pub inline fn toInt(self: Opt) i32 {
+        return @intFromEnum(self);
+    }
+
+    pub inline fn has(val: i32, opt: Opt) bool {
+        return (val & opt.toInt()) != 0;
+    }
+
+    pub inline fn combine(opts: anytype) i32 {
+        var res: i32 = 0;
+        inline for (opts) |opt| {
+            const o: Opt = opt;
+            res |= o.toInt();
+        }
+        return res;
+    }
 };
 
 /// Kết quả phản hồi từ tương tác của người dùng trên widget.
-pub const Res = struct {
-    pub const ACTIVE: i32 = (1 << 0);
-    pub const SUBMIT: i32 = (1 << 1);
-    pub const CHANGE: i32 = (1 << 2);
+pub const Res = enum(i32) {
+    none = 0,
+    active = (1 << 0),
+    submit = (1 << 1),
+    change = (1 << 2),
+
+    pub inline fn toInt(self: Res) i32 {
+        return @intFromEnum(self);
+    }
+
+    pub inline fn has(val: i32, res: Res) bool {
+        return (val & res.toInt()) != 0;
+    }
 };
 
 /// Mã các nút chuột.
-pub const Mouse = struct {
-    pub const LEFT: i32 = (1 << 0);
-    pub const RIGHT: i32 = (1 << 1);
-    pub const MIDDLE: i32 = (1 << 2);
+pub const Mouse = enum(i32) {
+    none = 0,
+    left = (1 << 0),
+    right = (1 << 1),
+    middle = (1 << 2),
+
+    pub inline fn toInt(self: Mouse) i32 {
+        return @intFromEnum(self);
+    }
 };
 
 /// Mã các phím bổ trợ và phím điều khiển bàn phím.
-pub const Key = struct {
-    pub const SHIFT: i32 = (1 << 0);
-    pub const CTRL: i32 = (1 << 1);
-    pub const ALT: i32 = (1 << 2);
-    pub const BACKSPACE: i32 = (1 << 3);
-    pub const RETURN: i32 = (1 << 4);
+pub const Key = enum(i32) {
+    none = 0,
+    shift = (1 << 0),
+    ctrl = (1 << 1),
+    alt = (1 << 2),
+    backspace = (1 << 3),
+    @"return" = (1 << 4),
+
+    pub inline fn toInt(self: Key) i32 {
+        return @intFromEnum(self);
+    }
 };
 
 /// Định danh các biểu tượng (Icon) chuẩn.
-pub const Icon = struct {
-    pub const CLOSE: i32 = 1;
-    pub const CHECK: i32 = 2;
-    pub const COLLAPSED: i32 = 3;
-    pub const EXPANDED: i32 = 4;
+pub const Icon = enum(i32) {
+    none = 0,
+    close = 1,
+    check = 2,
+    collapsed = 3,
+    expanded = 4,
+
+    pub inline fn toInt(self: Icon) i32 {
+        return @intFromEnum(self);
+    }
 };
-
-// =============================================================================
-// Backward Compatibility Aliases (C-API style)
-// =============================================================================
-
-pub const MU_CLIP_PART = Clip.PART;
-pub const MU_CLIP_ALL = Clip.ALL;
-
-pub const MU_OPT_ALIGNCENTER = Opt.ALIGNCENTER;
-pub const MU_OPT_ALIGNRIGHT = Opt.ALIGNRIGHT;
-pub const MU_OPT_NOINTERACT = Opt.NOINTERACT;
-pub const MU_OPT_NOFRAME = Opt.NOFRAME;
-pub const MU_OPT_NORESIZE = Opt.NORESIZE;
-pub const MU_OPT_NOSCROLL = Opt.NOSCROLL;
-pub const MU_OPT_NOCLOSE = Opt.NOCLOSE;
-pub const MU_OPT_NOTITLE = Opt.NOTITLE;
-pub const MU_OPT_HOLDFOCUS = Opt.HOLDFOCUS;
-pub const MU_OPT_AUTOSIZE = Opt.AUTOSIZE;
-pub const MU_OPT_POPUP = Opt.POPUP;
-pub const MU_OPT_CLOSED = Opt.CLOSED;
-pub const MU_OPT_EXPANDED = Opt.EXPANDED;
-
-pub const MU_RES_ACTIVE = Res.ACTIVE;
-pub const MU_RES_SUBMIT = Res.SUBMIT;
-pub const MU_RES_CHANGE = Res.CHANGE;
-
-pub const MU_MOUSE_LEFT = Mouse.LEFT;
-pub const MU_MOUSE_RIGHT = Mouse.RIGHT;
-pub const MU_MOUSE_MIDDLE = Mouse.MIDDLE;
-
-pub const MU_KEY_SHIFT = Key.SHIFT;
-pub const MU_KEY_CTRL = Key.CTRL;
-pub const MU_KEY_ALT = Key.ALT;
-pub const MU_KEY_BACKSPACE = Key.BACKSPACE;
-pub const MU_KEY_RETURN = Key.RETURN;
-
-pub const MU_ICON_CLOSE = Icon.CLOSE;
-pub const MU_ICON_CHECK = Icon.CHECK;
-pub const MU_ICON_COLLAPSED = Icon.COLLAPSED;
-pub const MU_ICON_EXPANDED = Icon.EXPANDED;
-
-pub const MU_MAX_FMT = MAX_FMT;
-pub const MU_SLIDER_FMT = SLIDER_FMT;

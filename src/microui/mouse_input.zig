@@ -1,11 +1,13 @@
 const std = @import("std");
 const math = @import("math.zig");
+const types = @import("types.zig");
+const Mouse = types.Mouse;
 
 pub const MouseInput = struct {
-    pos: math.Vec2 = .{},
-    last_pos: math.Vec2 = .{},
-    delta: math.Vec2 = .{},
-    scroll_delta: math.Vec2 = .{},
+    pos: math.Vec2 = .zero,
+    last_pos: math.Vec2 = .zero,
+    delta: math.Vec2 = .zero,
+    scroll_delta: math.Vec2 = .zero,
     down: i32 = 0,
     pressed: i32 = 0,
 
@@ -13,41 +15,39 @@ pub const MouseInput = struct {
         return r.contains(self.pos);
     }
 
-    pub inline fn move(self: *MouseInput, x: i32, y: i32) void {
-        self.pos = math.vec2(x, y);
+    pub inline fn move(self: *MouseInput, pos: math.Vec2) void {
+        self.pos = pos;
     }
 
-    pub inline fn press(self: *MouseInput, x: i32, y: i32, btn: i32) void {
-        self.pos = math.vec2(x, y);
-        self.down |= btn;
-        self.pressed |= btn;
+    pub inline fn press(self: *MouseInput, pos: math.Vec2, btn: Mouse) void {
+        self.pos = pos;
+        self.down |= btn.toInt();
+        self.pressed |= btn.toInt();
     }
 
-    pub inline fn release(self: *MouseInput, x: i32, y: i32, btn: i32) void {
-        self.pos = math.vec2(x, y);
-        self.down &= ~btn;
+    pub inline fn release(self: *MouseInput, pos: math.Vec2, btn: Mouse) void {
+        self.pos = pos;
+        self.down &= ~btn.toInt();
     }
 
-    pub inline fn scroll(self: *MouseInput, x: i32, y: i32) void {
-        self.scroll_delta.x += x;
-        self.scroll_delta.y += y;
+    pub inline fn scroll(self: *MouseInput, value: math.Vec2) void {
+        self.scroll_delta.add(value);
     }
 
     pub inline fn updateDelta(self: *MouseInput) void {
-        self.delta.x = self.pos.x - self.last_pos.x;
-        self.delta.y = self.pos.y - self.last_pos.y;
+        self.delta = self.pos.subVec2(self.last_pos);
     }
 
-    pub inline fn isDown(self: *const MouseInput, btn: i32) bool {
-        return (self.down & btn) != 0;
+    pub inline fn isDown(self: *const MouseInput, btn: Mouse) bool {
+        return (self.down & btn.toInt()) != 0;
     }
 
-    pub inline fn isPressed(self: *const MouseInput, btn: i32) bool {
-        return (self.pressed & btn) != 0;
+    pub inline fn isPressed(self: *const MouseInput, btn: Mouse) bool {
+        return (self.pressed & btn.toInt()) != 0;
     }
 
-    pub inline fn isDownOrPressed(self: *const MouseInput, btn: i32) bool {
-        return ((self.down | self.pressed) & btn) != 0;
+    pub inline fn isDownOrPressed(self: *const MouseInput, btn: Mouse) bool {
+        return ((self.down | self.pressed) & btn.toInt()) != 0;
     }
 
     pub inline fn hasDown(self: *const MouseInput) bool {
