@@ -33,6 +33,10 @@ pub fn Stack(T: type, size: usize) type {
     return struct {
         list: List(T, size) = .{},
 
+        pub fn init() @This() {
+            return .{};
+        }
+
         pub inline fn push(self: *@This(), item: T) void {
             self.list.append(item);
         }
@@ -43,7 +47,7 @@ pub fn Stack(T: type, size: usize) type {
             return self.list.items[self.list.idx];
         }
 
-        pub inline fn top(self: *@This()) T {
+        pub inline fn top(self: *const @This()) T {
             std.debug.assert(self.list.idx > 0);
             return self.list.items[self.list.idx - 1];
         }

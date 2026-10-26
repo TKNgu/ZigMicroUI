@@ -10,6 +10,7 @@ const LogBuf = @import("ui/log_window.zig").LogBuf;
 const logWindow = @import("ui/log_window.zig").logWindow;
 const testWindow = @import("ui/test_window.zig").testWindow;
 const command_mod = @import("microui/command.zig");
+const clearWindow = @import("ui/clear_window.zig").clearWindow;
 
 extern "c" fn setenv(name: [*:0]const u8, value: [*:0]const u8, overwrite: c_int) c_int;
 
@@ -43,6 +44,7 @@ fn processFrame(microui: *MicroUI) !void {
     try styleWindow(microui);
     try logWindow(microui, &logbuf);
     try testWindow(microui, &logbuf, &checks, &bg);
+    try clearWindow(microui);
 }
 
 pub fn main(init: std.process.Init) !void {
